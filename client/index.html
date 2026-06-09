@@ -1,0 +1,289 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Jam Pal — Phase 0</title>
+<style>
+  :root {
+    --bg: #14171c;
+    --panel: #1c2027;
+    --line: #2a2f38;
+    --text: #e7e3d8;
+    --muted: #8b9099;
+    --accent: #1d9e75;
+    --accent-dim: #0f6e56;
+    --beat: #ef9f27;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: ui-sans-serif, system-ui, sans-serif;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 100vh;
+    padding: 24px;
+  }
+  .card {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 16px;
+    padding: 36px 40px 40px;
+    width: 100%;
+    max-width: 440px;
+    text-align: center;
+  }
+  h1 { font-size: 20px; font-weight: 500; letter-spacing: -0.01em; }
+  .sub { color: var(--muted); font-size: 14px; margin-top: 6px; margin-bottom: 30px; }
+
+  /* Beat indicator: four quarter-note dots */
+  .beats { display: flex; gap: 14px; justify-content: center; margin-bottom: 34px; }
+  .dot {
+    width: 22px; height: 22px; border-radius: 50%;
+    background: var(--line);
+    transition: background 60ms linear, transform 60ms linear;
+  }
+  .dot.on { background: var(--beat); transform: scale(1.18); }
+
+  button {
+    font: inherit; font-size: 16px; font-weight: 500;
+    color: #04342c; background: var(--accent);
+    border: none; border-radius: 10px;
+    padding: 14px 0; width: 100%; cursor: pointer;
+    transition: background 120ms ease;
+  }
+  button:hover { background: #23b384; }
+  button.playing { background: var(--accent-dim); color: var(--text); }
+
+  .control { margin-top: 28px; text-align: left; }
+  .control label { display: flex; justify-content: space-between; font-size: 14px; color: var(--muted); margin-bottom: 8px; }
+  .control .val { color: var(--text); font-variant-numeric: tabular-nums; }
+  input[type="range"] { width: 100%; accent-color: var(--accent); }
+</style>
+</head>
+<body>
+  <div class="card">
+    <h1>Jam partner</h1>
+    <div class="sub">Phase 0 — fixed groove, tight clock</div>
+
+    <div class="beats">
+      <div class="dot" data-beat="0"></div>
+      <div class="dot" data-beat="1"></div>
+      <div class="dot" data-beat="2"></div>
+      <div class="dot" data-beat="3"></div>
+    </div>
+
+    <button id="toggle">Start</button>
+
+    <div class="control">
+      <label>Tempo <span class="val"><span id="bpmVal">100</span> BPM</span></label>
+      <input type="range" id="bpm" min="60" max="170" value="100">
+    </div>
+  </div>
+
+<script>
+// ============================================================
+//  Jam Partner — Phase 0
+//  Goal: a fixed drum + bass loop that plays with DEAD-TIGHT timing.
+//  Technique: a look-ahead scheduler (the "tale of two clocks" pattern).
+//  Sounds are SYNTHESISED here so there are zero file dependencies.
+// ============================================================
+
+let audioCtx = null;       // created on first user gesture
+let masterGain = null;
+let noiseBuffer = null;    // shared white-noise buffer for snare/hat
+
+// ---- transport state ----
+let isPlaying = false;
+let bpm = 100;
+let current16th = 0;       // which 16th-note step we are on (0..15)
+let nextNoteTime = 0;      // audioContext time of the next step to schedule
+let timerID = null;
+
+// The look-ahead scheduler's two key numbers:
+const LOOKAHEAD_MS = 25;       // how often the JS timer wakes up to check
+const SCHEDULE_AHEAD = 0.1;    // how far ahead (seconds) we schedule audio
+// Because we schedule 100ms of audio in advance against the precise audio
+// clock, the sloppy JS timer can never make a note play late. This is the
+// whole trick to tight timing in the browser.
+
+// ---- the pattern (one bar = 16 sixteenth-note steps) ----
+// 1 = hit on this step, 0 = silent
+const kickPattern  = [1,0,0,0, 0,0,1,0, 1,0,0,0, 0,0,1,0];
+const snarePattern = [0,0,0,0, 1,0,0,0, 0,0,0,0, 1,0,0,0];
+const hatPattern   = [1,0,1,0, 1,0,1,0, 1,0,1,0, 1,0,1,0];
+// bass: semitone offset from the root, or null for no note. Root = A1 (55 Hz).
+const bassPattern  = [0,null,null,null, 0,null,null,null, 7,null,null,null, 5,null,null,null];
+
+// queue of {step, time} so the visual beat dots can flash in sync
+const notesInQueue = [];
+
+
+//  Audio setup
+function initAudio() {
+  audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  masterGain = audioCtx.createGain();
+  masterGain.gain.value = 0.8;
+  masterGain.connect(audioCtx.destination);
+
+  // one short buffer of white noise, reused for snare + hi-hat
+  const len = Math.floor(audioCtx.sampleRate * 0.2);
+  noiseBuffer = audioCtx.createBuffer(1, len, audioCtx.sampleRate);
+  const data = noiseBuffer.getChannelData(0);
+  for (let i = 0; i < len; i++) data[i] = Math.random() * 2 - 1;
+}
+
+//  Synth voices — each takes the precise time it should sound
+function playKick(time) {
+  const osc = audioCtx.createOscillator();
+  const gain = audioCtx.createGain();
+  osc.frequency.setValueAtTime(150, time);
+  osc.frequency.exponentialRampToValueAtTime(50, time + 0.12);
+  gain.gain.setValueAtTime(1.0, time);
+  gain.gain.exponentialRampToValueAtTime(0.001, time + 0.18);
+  osc.connect(gain).connect(masterGain);
+  osc.start(time);
+  osc.stop(time + 0.2);
+}
+
+function playSnare(time) {
+  // noise burst (the "crack")
+  const noise = audioCtx.createBufferSource();
+  noise.buffer = noiseBuffer;
+  const hp = audioCtx.createBiquadFilter();
+  hp.type = 'highpass';
+  hp.frequency.value = 1500;
+  const ng = audioCtx.createGain();
+  ng.gain.setValueAtTime(0.7, time);
+  ng.gain.exponentialRampToValueAtTime(0.01, time + 0.12);
+  noise.connect(hp).connect(ng).connect(masterGain);
+  noise.start(time);
+  noise.stop(time + 0.15);
+  // short tonal body (the "thud")
+  const osc = audioCtx.createOscillator();
+  osc.type = 'triangle';
+  const og = audioCtx.createGain();
+  osc.frequency.setValueAtTime(180, time);
+  og.gain.setValueAtTime(0.4, time);
+  og.gain.exponentialRampToValueAtTime(0.01, time + 0.08);
+  osc.connect(og).connect(masterGain);
+  osc.start(time);
+  osc.stop(time + 0.1);
+}
+
+function playHat(time) {
+  const noise = audioCtx.createBufferSource();
+  noise.buffer = noiseBuffer;
+  const hp = audioCtx.createBiquadFilter();
+  hp.type = 'highpass';
+  hp.frequency.value = 7000;
+  const g = audioCtx.createGain();
+  g.gain.setValueAtTime(0.25, time);
+  g.gain.exponentialRampToValueAtTime(0.001, time + 0.05);
+  noise.connect(hp).connect(g).connect(masterGain);
+  noise.start(time);
+  noise.stop(time + 0.06);
+}
+
+function playBass(semitone, time) {
+  const osc = audioCtx.createOscillator();
+  const g = audioCtx.createGain();
+  const lp = audioCtx.createBiquadFilter();
+  osc.type = 'sawtooth';
+  const freq = 55 * Math.pow(2, semitone / 12); // 55 Hz = A1
+  osc.frequency.setValueAtTime(freq, time);
+  lp.type = 'lowpass';
+  lp.frequency.value = 700; // warm it up, tame the buzz
+  g.gain.setValueAtTime(0.0001, time);
+  g.gain.linearRampToValueAtTime(0.5, time + 0.01);
+  g.gain.exponentialRampToValueAtTime(0.001, time + 0.35);
+  osc.connect(lp).connect(g).connect(masterGain);
+  osc.start(time);
+  osc.stop(time + 0.4);
+}
+
+//  The scheduler
+function scheduleStep(step, time) {
+  if (kickPattern[step])  playKick(time);
+  if (snarePattern[step]) playSnare(time);
+  if (hatPattern[step])   playHat(time);
+  if (bassPattern[step] !== null) playBass(bassPattern[step], time);
+  notesInQueue.push({ step, time });
+}
+
+function advanceStep() {
+  const secondsPer16th = (60.0 / bpm) / 4;
+  nextNoteTime += secondsPer16th;
+  current16th = (current16th + 1) % 16;
+}
+
+function scheduler() {
+  // schedule every step that falls within the look-ahead window
+  while (nextNoteTime < audioCtx.currentTime + SCHEDULE_AHEAD) {
+    scheduleStep(current16th, nextNoteTime);
+    advanceStep();
+  }
+  timerID = setTimeout(scheduler, LOOKAHEAD_MS);
+}
+
+
+//  Visual beat dots — driven by requestAnimationFrame, NOT the
+//  audio clock, so the UI never blocks the audio thread.
+
+const dots = [...document.querySelectorAll('.dot')];
+let lastQuarterLit = -1;
+
+function draw() {
+  const now = audioCtx ? audioCtx.currentTime : 0;
+  let currentStep = -1;
+  while (notesInQueue.length && notesInQueue[0].time <= now) {
+    currentStep = notesInQueue[0].step;
+    notesInQueue.shift();
+  }
+  if (currentStep !== -1) {
+    const quarter = Math.floor(currentStep / 4); // 0..3
+    if (quarter !== lastQuarterLit) {
+      dots.forEach((d, i) => d.classList.toggle('on', i === quarter));
+      lastQuarterLit = quarter;
+    }
+  }
+  requestAnimationFrame(draw);
+}
+
+//  Controls
+const toggleBtn = document.getElementById('toggle');
+const bpmSlider = document.getElementById('bpm');
+const bpmVal = document.getElementById('bpmVal');
+
+function start() {
+  if (!audioCtx) { initAudio(); requestAnimationFrame(draw); }
+  if (audioCtx.state === 'suspended') audioCtx.resume();
+  isPlaying = true;
+  current16th = 0;
+  nextNoteTime = audioCtx.currentTime + 0.05; // tiny offset so step 0 isn't late
+  scheduler();
+  toggleBtn.textContent = 'Stop';
+  toggleBtn.classList.add('playing');
+}
+
+function stop() {
+  isPlaying = false;
+  clearTimeout(timerID);
+  dots.forEach(d => d.classList.remove('on'));
+  lastQuarterLit = -1;
+  toggleBtn.textContent = 'Start';
+  toggleBtn.classList.remove('playing');
+}
+
+toggleBtn.addEventListener('click', () => isPlaying ? stop() : start());
+
+bpmSlider.addEventListener('input', e => {
+  bpm = parseInt(e.target.value, 10);
+  bpmVal.textContent = bpm;
+});
+</script>
+</body>
+</html>

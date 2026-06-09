@@ -1,0 +1,54 @@
+# ---- Python ----
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+*.so
+.venv/
+venv/
+myenv/
+env/
+.python-version
+
+# ---- ML / data artifacts ----
+*.ckpt
+*.pth
+*.pt
+*.onnx
+*.h5
+checkpoints/
+runs/
+wandb/
+*.log
+data/
+!data/.gitkeep
+
+# ---- Node / web ----
+node_modules/
+dist/
+build/
+.next/
+.cache/
+*.local
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# ---- Env / secrets ----
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# ---- Editors / IDE ----
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# ---- OS ----
+.DS_Store
+Thumbs.db

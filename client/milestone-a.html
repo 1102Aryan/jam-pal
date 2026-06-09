@@ -1,0 +1,584 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Jam Partner — Phase 2 (A→D: mic, onsets, tempo, follow)</title>
+    <style>
+        :root {
+            --bg: #14171c;
+            --panel: #1c2027;
+            --line: #2a2f38;
+            --text: #e7e3d8;
+            --muted: #8b9099;
+            --accent: #1d9e75;
+            --accent-dim: #0f6e56;
+            --beat: #ef9f27;
+            --hot: #e0563f;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            background: var(--bg);
+            color: var(--text);
+            font-family: ui-sans-serif, system-ui, sans-serif;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            padding: 24px;
+        }
+
+        .card {
+            background: var(--panel);
+            border: 1px solid var(--line);
+            border-radius: 16px;
+            padding: 32px 36px 36px;
+            width: 100%;
+            max-width: 520px;
+        }
+
+        h1 {
+            font-size: 19px;
+            font-weight: 500;
+        }
+
+        .sub {
+            color: var(--muted);
+            font-size: 13px;
+            margin-top: 5px;
+            margin-bottom: 24px;
+        }
+
+        button {
+            font: inherit;
+            font-size: 15px;
+            font-weight: 500;
+            color: #04342c;
+            background: var(--accent);
+            border: none;
+            border-radius: 10px;
+            padding: 13px 0;
+            width: 100%;
+            cursor: pointer;
+        }
+
+        button.on {
+            background: var(--hot);
+            color: #fff;
+        }
+
+        .row {
+            display: flex;
+            gap: 12px;
+            margin-top: 12px;
+        }
+
+        .row button {
+            flex: 1;
+        }
+
+        button.ghost {
+            background: var(--line);
+            color: var(--text);
+        }
+
+        button.ghost.on {
+            background: var(--accent-dim);
+            color: var(--text);
+        }
+
+        .readouts {
+            display: flex;
+            gap: 28px;
+            margin: 26px 0 10px;
+        }
+
+        .readout .num {
+            font-size: 34px;
+            font-variant-numeric: tabular-nums;
+            letter-spacing: -0.02em;
+            display: block;
+            line-height: 1.1;
+        }
+
+        .readout .lbl {
+            color: var(--muted);
+            font-size: 12px;
+        }
+
+        .meter {
+            height: 14px;
+            background: var(--line);
+            border-radius: 7px;
+            overflow: hidden;
+            margin-top: 6px;
+        }
+
+        .meter .fill {
+            height: 100%;
+            width: 0%;
+            background: var(--accent);
+            transition: width 40ms linear;
+        }
+
+        /* four beat dots driven by the scheduler (Milestone D) */
+        .beats {
+            display: flex;
+            gap: 12px;
+            justify-content: center;
+            margin: 22px 0 6px;
+        }
+
+        .beatdot {
+            width: 18px;
+            height: 18px;
+            border-radius: 50%;
+            background: var(--line);
+            transition: background 60ms linear, transform 60ms linear;
+        }
+
+        .beatdot.on {
+            background: var(--beat);
+            transform: scale(1.18);
+        }
+
+        #onsetDot {
+            width: 18px;
+            height: 18px;
+            border-radius: 50%;
+            background: var(--line);
+            margin: 0 auto;
+            transition: background 60ms;
+        }
+
+        #onsetDot.lit {
+            background: var(--hot);
+        }
+
+        canvas {
+            width: 100%;
+            height: 120px;
+            display: block;
+            margin-top: 18px;
+            background: #11141a;
+            border-radius: 8px;
+        }
+
+        .status {
+            margin-top: 16px;
+            font-size: 13px;
+            color: var(--muted);
+            min-height: 18px;
+        }
+
+        .note {
+            margin-top: 18px;
+            font-size: 12px;
+            color: var(--muted);
+            line-height: 1.5;
+            border-top: 1px solid var(--line);
+            padding-top: 14px;
+        }
+
+        code {
+            color: var(--text);
+        }
+    </style>
+</head>
+
+<body>
+    <div class="card">
+        <h1>Jam Partner — Phase 2</h1>
+        <div class="sub">A mic · B onsets · C tempo · D the band follows you</div>
+
+        <button id="toggle">Enable microphone</button>
+        <div class="row">
+            <button id="band" class="ghost" disabled>Start band</button>
+        </div>
+
+        <div class="readouts">
+            <div class="readout">
+                <span class="num" id="bpmNum">—</span>
+                <span class="lbl">detected BPM (clap a beat)</span>
+            </div>
+            <div class="readout">
+                <span class="num" id="rmsNum">0.000</span>
+                <span class="lbl">mic energy</span>
+            </div>
+        </div>
+        <div class="meter">
+            <div class="fill" id="fill"></div>
+        </div>
+
+        <!-- onset flash (B) -->
+        <div style="margin-top:18px; text-align:center;">
+            <div id="onsetDot"></div>
+            <div class="lbl" style="margin-top:6px;">onset (flashes per clap)</div>
+        </div>
+
+        <!-- band beat dots (D) -->
+        <div class="beats">
+            <div class="beatdot" data-beat="0"></div>
+            <div class="beatdot" data-beat="1"></div>
+            <div class="beatdot" data-beat="2"></div>
+            <div class="beatdot" data-beat="3"></div>
+        </div>
+
+        <canvas id="scope" width="900" height="240"></canvas>
+
+        <div class="status" id="status"></div>
+
+        <div class="note">
+            Serve over <b>localhost</b> (mic is blocked on file://): run
+            <code>python -m http.server</code> here, open <code>localhost:8000</code>.
+            Use <b>headphones</b> when the band plays, or the mic hears the drums and
+            the tempo runs away. Console (F12) logs each onset + gap.
+        </div>
+    </div>
+
+    <script>
+        // ============================================================
+        //  Phase 2 — full chain
+        //  A: mic -> AnalyserNode -> RMS energy
+        //  B: onset detection (rise over baseline + refractory)
+        //  C: running tempo estimate from onset gaps (+ fold into range)
+        //  D: a look-ahead scheduler whose tempo FOLLOWS the detected BPM
+        // ============================================================
+
+        // ---- audio / analysis state ----
+        let audioCtx = null, analyser = null, micStream = null, timeBuf = null;
+        let listening = false;
+
+        const toggle = document.getElementById('toggle');
+        const bandBtn = document.getElementById('band');
+        const rmsNum = document.getElementById('rmsNum');
+        const bpmNum = document.getElementById('bpmNum');
+        const fill = document.getElementById('fill');
+        const status = document.getElementById('status');
+        const scope = document.getElementById('scope');
+        const ctx2d = scope.getContext('2d');
+        const onsetDot = document.getElementById('onsetDot');
+        const beatDots = [...document.querySelectorAll('.beatdot')];
+
+        const history = new Array(scope.width).fill(0);
+
+        // ===== MILESTONE B state (declared ONCE, outside loop) =====
+        let baseline = 0;          // exponential running average of energy
+        let lastOnsetTime = -1;    // audio-clock time of last fired onset
+        const onsetTimes = [];     // all onset timestamps
+
+        const BASELINE_RATE = 0.05; // baseline tracking speed (low = slow/stable)
+        const ONSET_FACTOR = 2.5;  // clap must be this x louder than baseline  (your "delta")
+        const REFRACTORY = 0.15; // seconds to ignore new onsets after firing (your "wait")
+
+        // ===== MILESTONE C state =====
+        let detectedBPM = null;     // latest tempo estimate (null until enough onsets)
+        const TEMPO_WINDOW = 5;     // use gaps between the last N onsets
+
+        // fold a BPM into a human range by halving/doubling (your lab fold_tempo)
+        function foldTempo(bpm, low = 70, high = 160) {
+            while (bpm < low || bpm > high) {
+                if (bpm > high) bpm /= 2;
+                else bpm *= 2;
+            }
+            return bpm;
+        }
+
+        // ===== MILESTONE D state (the band / scheduler) =====
+        let bandPlaying = false;
+        let smoothedBPM = 100;      // what the band actually plays at (smoothed)
+        let current16th = 0;
+        let nextNoteTime = 0;
+        let schedulerTimer = null;
+        const FOLLOW_RATE = 0.08;   // how fast the band chases detectedBPM (Phase 3's seed)
+        const LOOKAHEAD_MS = 25;
+        const SCHEDULE_AHEAD = 0.1;
+        const noteQueue = [];
+        let smoothedWobble = 0;
+
+        // simple patterns (one bar = 16 sixteenths)
+        const kickPattern = [1, 0, 0, 0, 0, 0, 1, 0, 1, 0, 0, 0, 0, 0, 1, 0];
+        const snarePattern = [0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0];
+        const hatPattern = [1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0];
+        const bassPattern = [0, null, null, null, 0, null, null, null, 7, null, null, null, 5, null, null, null];
+
+        let noiseBuffer = null;
+
+        // ------------------------------------------------------------
+        //  Mic setup (A)
+        // ------------------------------------------------------------
+        async function startMic() {
+            try {
+                micStream = await navigator.mediaDevices.getUserMedia({
+                    audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false }
+                });
+            } catch (err) {
+                status.textContent = "Mic permission denied or unavailable: " + err.message;
+                return;
+            }
+
+            audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            if (audioCtx.state === 'suspended') await audioCtx.resume();
+
+            // shared noise buffer for snare/hat (used by the band)
+            const len = Math.floor(audioCtx.sampleRate * 0.2);
+            noiseBuffer = audioCtx.createBuffer(1, len, audioCtx.sampleRate);
+            const nd = noiseBuffer.getChannelData(0);
+            for (let i = 0; i < len; i++) nd[i] = Math.random() * 2 - 1;
+
+            const source = audioCtx.createMediaStreamSource(micStream);
+            analyser = audioCtx.createAnalyser();
+            analyser.fftSize = 1024;
+            source.connect(analyser); // NOT connected to destination (don't monitor the mic)
+
+            timeBuf = new Float32Array(analyser.fftSize);
+            listening = true;
+            toggle.textContent = "Stop";
+            toggle.classList.add('on');
+            bandBtn.disabled = false;
+            status.textContent = "Listening. Clap a steady beat.";
+            requestAnimationFrame(loop);
+        }
+
+        function stopMic() {
+            listening = false;
+            stopBand();
+            if (micStream) micStream.getTracks().forEach(t => t.stop());
+            if (audioCtx) audioCtx.close();
+            audioCtx = analyser = micStream = null;
+            toggle.textContent = "Enable microphone";
+            toggle.classList.remove('on');
+            bandBtn.disabled = true;
+            status.textContent = "Stopped.";
+            fill.style.width = "0%";
+            rmsNum.textContent = "0.000";
+            bpmNum.textContent = "—";
+        }
+
+        // ------------------------------------------------------------
+        //  Analysis loop ~60fps  (A + B + C)
+        // ------------------------------------------------------------
+        function loop() {
+            if (!listening) return;
+
+            analyser.getFloatTimeDomainData(timeBuf);
+            let sumSq = 0;
+            for (let i = 0; i < timeBuf.length; i++) sumSq += timeBuf[i] * timeBuf[i];
+            const rms = Math.sqrt(sumSq / timeBuf.length);
+
+            rmsNum.textContent = rms.toFixed(3);
+            fill.style.width = Math.min(100, rms * 400) + "%";
+            pushHistory(rms);
+            drawScope();
+
+            // ===== MILESTONE B: onset detection =====
+            const now = audioCtx.currentTime;
+            baseline += BASELINE_RATE * (rms - baseline);
+
+            const loudEnough = rms > baseline * ONSET_FACTOR;
+            const pastRefractory = (now - lastOnsetTime) > REFRACTORY;
+            const baselineReady = baseline > 0.0005;
+
+            if (loudEnough && pastRefractory && baselineReady) {
+                lastOnsetTime = now;
+                onsetTimes.push(now);
+                flashOnset();
+
+                // ===== MILESTONE C: running tempo from recent gaps =====
+                updateTempo();
+
+                console.log("onset @", now.toFixed(3),
+                    "gap:", onsetTimes.length > 1
+                    ? (now - onsetTimes[onsetTimes.length - 2]).toFixed(3) : "—",
+                    "BPM:", detectedBPM ? detectedBPM.toFixed(1) : "—");
+
+                console.log("BPM:", detectedBPM ? detectedBPM.toFixed(1) : "—",
+                    "wobble:", smoothedWobble.toFixed(3),
+                    "rate:", wobbleToFollowRate(smoothedWobble).toFixed(3));
+            }
+
+            requestAnimationFrame(loop);
+        }
+
+        // Take the gaps between the last few onsets, use their MEDIAN (robust to
+        // one bad clap), convert to BPM, fold into a human range.
+        function updateTempo() {
+            if (onsetTimes.length < 3) return;          // need a couple of gaps first
+
+            // build the gaps between the last few onsets FIRST
+            const recent = onsetTimes.slice(-TEMPO_WINDOW);
+            const gaps = [];
+            for (let i = 1; i < recent.length; i++) gaps.push(recent[i] - recent[i - 1]);
+
+            // --- wobble (steadiness) from those gaps, computed on the UNSORTED gaps ---
+            const meanGap = gaps.reduce((a, b) => a + b, 0) / gaps.length;
+            const variance = gaps.reduce((a, b) => a + (b - meanGap) ** 2, 0) / gaps.length;
+            const stdGap = Math.sqrt(variance);
+            const wobble = stdGap / meanGap;
+            smoothedWobble += 0.2 * (wobble - smoothedWobble);
+
+            // --- tempo from the MEDIAN gap (sort a copy so we don't disturb the above) ---
+            const sorted = [...gaps].sort((a, b) => a - b);
+            const medianGap = sorted[Math.floor(sorted.length / 2)];
+            if (medianGap <= 0) return;
+            detectedBPM = foldTempo(60 / medianGap);
+            bpmNum.textContent = Math.round(detectedBPM);
+        }
+
+        function wobbleToFollowRate(wobble) {
+            const STEADY = 0.1;   // wobble at/below this = rock steady -> follow hard
+            const MESSY = 0.4;   // wobble at/above this = falling apart -> hold firm
+            const HIGH_RATE = 0.15; // eager follow
+            const LOW_RATE = 0.02; // stubborn anchor
+
+            // how far through the steady->messy range are we? (0 = steady, 1 = messy)
+            let t = (wobble - STEADY) / (MESSY - STEADY);
+            t = Math.max(0, Math.min(1, t));          // clamp to [0,1]
+
+            // invert: steady (t=0) -> HIGH_RATE, messy (t=1) -> LOW_RATE
+            return HIGH_RATE + t * (LOW_RATE - HIGH_RATE);
+        }
+
+        // ------------------------------------------------------------
+        //  Scope + onset flash
+        // ------------------------------------------------------------
+        function pushHistory(v) { history.push(v); history.shift(); }
+
+        function drawScope() {
+            const w = scope.width, h = scope.height;
+            ctx2d.clearRect(0, 0, w, h);
+            ctx2d.beginPath();
+            for (let x = 0; x < history.length; x++) {
+                const y = h - Math.min(h, history[x] * h * 20);
+                x === 0 ? ctx2d.moveTo(x, y) : ctx2d.lineTo(x, y);
+            }
+            ctx2d.strokeStyle = "#1d9e75";
+            ctx2d.lineWidth = 1.5;
+            ctx2d.stroke();
+        }
+
+        function flashOnset() {
+            onsetDot.classList.add('lit');
+            setTimeout(() => onsetDot.classList.remove('lit'), 90);
+        }
+
+        // ------------------------------------------------------------
+        //  MILESTONE D: the band follows the detected tempo
+        // ------------------------------------------------------------
+        function startBand() {
+            if (!audioCtx) return;
+            bandPlaying = true;
+            current16th = 0;
+            nextNoteTime = audioCtx.currentTime + 0.1;
+            schedulerLoop();
+            bandBtn.textContent = "Stop band";
+            bandBtn.classList.add('on');
+        }
+
+        function stopBand() {
+            bandPlaying = false;
+            clearTimeout(schedulerTimer);
+            beatDots.forEach(d => d.classList.remove('on'));
+        }
+
+        function schedulerLoop() {
+            if (!bandPlaying) return;
+
+            // EVERY tick, ease the band's tempo toward what you're playing.
+            // This is the "follow" — and FOLLOW_RATE is the seed of Phase 3's
+            // adjustable forgiveness. If no tempo detected yet, keep current.
+            if (detectedBPM) {
+                const rate = wobbleToFollowRate(smoothedWobble);
+                smoothedBPM += rate * (detectedBPM - smoothedBPM);
+            }
+
+            while (nextNoteTime < audioCtx.currentTime + SCHEDULE_AHEAD) {
+                scheduleStep(current16th, nextNoteTime);
+                const secondsPer16th = (60.0 / smoothedBPM) / 4;
+                nextNoteTime += secondsPer16th;
+                current16th = (current16th + 1) % 16;
+            }
+            schedulerTimer = setTimeout(schedulerLoop, LOOKAHEAD_MS);
+        }
+
+        function scheduleStep(step, time) {
+            if (kickPattern[step]) playKick(time);
+            if (snarePattern[step]) playSnare(time);
+            if (hatPattern[step]) playHat(time);
+            if (bassPattern[step] !== null) playBass(bassPattern[step], time);
+            noteQueue.push({ step, time });
+        }
+
+        // light the beat dots in sync with the scheduled audio
+        let lastQuarterLit = -1;
+        function drawBeats() {
+            if (audioCtx && bandPlaying) {
+                const now = audioCtx.currentTime;
+                let step = -1;
+                while (noteQueue.length && noteQueue[0].time <= now) {
+                    step = noteQueue[0].step; noteQueue.shift();
+                }
+                if (step !== -1) {
+                    const q = Math.floor(step / 4);
+                    if (q !== lastQuarterLit) {
+                        beatDots.forEach((d, i) => d.classList.toggle('on', i === q));
+                        lastQuarterLit = q;
+                    }
+                }
+            }
+            requestAnimationFrame(drawBeats);
+        }
+        requestAnimationFrame(drawBeats);
+
+        // ---- synth voices ----
+        function playKick(time) {
+            const o = audioCtx.createOscillator(), g = audioCtx.createGain();
+            o.frequency.setValueAtTime(150, time);
+            o.frequency.exponentialRampToValueAtTime(50, time + 0.12);
+            g.gain.setValueAtTime(1, time);
+            g.gain.exponentialRampToValueAtTime(0.001, time + 0.18);
+            o.connect(g).connect(audioCtx.destination);
+            o.start(time); o.stop(time + 0.2);
+        }
+        function playSnare(time) {
+            const n = audioCtx.createBufferSource(); n.buffer = noiseBuffer;
+            const hp = audioCtx.createBiquadFilter(); hp.type = 'highpass'; hp.frequency.value = 1500;
+            const g = audioCtx.createGain();
+            g.gain.setValueAtTime(0.7, time); g.gain.exponentialRampToValueAtTime(0.01, time + 0.12);
+            n.connect(hp).connect(g).connect(audioCtx.destination);
+            n.start(time); n.stop(time + 0.15);
+        }
+        function playHat(time) {
+            const n = audioCtx.createBufferSource(); n.buffer = noiseBuffer;
+            const hp = audioCtx.createBiquadFilter(); hp.type = 'highpass'; hp.frequency.value = 7000;
+            const g = audioCtx.createGain();
+            g.gain.setValueAtTime(0.25, time); g.gain.exponentialRampToValueAtTime(0.001, time + 0.05);
+            n.connect(hp).connect(g).connect(audioCtx.destination);
+            n.start(time); n.stop(time + 0.06);
+        }
+        function playBass(semi, time) {
+            const o = audioCtx.createOscillator(), g = audioCtx.createGain(), lp = audioCtx.createBiquadFilter();
+            o.type = 'sawtooth';
+            o.frequency.setValueAtTime(55 * Math.pow(2, semi / 12), time);
+            lp.type = 'lowpass'; lp.frequency.value = 700;
+            g.gain.setValueAtTime(0.0001, time);
+            g.gain.linearRampToValueAtTime(0.5, time + 0.01);
+            g.gain.exponentialRampToValueAtTime(0.001, time + 0.35);
+            o.connect(lp).connect(g).connect(audioCtx.destination);
+            o.start(time); o.stop(time + 0.4);
+        }
+
+        // ---- buttons ----
+        toggle.addEventListener('click', () => listening ? stopMic() : startMic());
+        bandBtn.addEventListener('click', () => bandPlaying ? stopBand() : startBand());
+    </script>
+</body>
+
+</html>
