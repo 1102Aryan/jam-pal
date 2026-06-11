@@ -1,0 +1,129 @@
+
+.page {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+  padding: 48px 24px 40px;
+  max-width: 480px;
+  margin: 0 auto;
+}
+
+/* ── Header ── */
+.logo {
+  font-size: 28px;
+  font-weight: 700;
+  letter-spacing: -0.03em;
+  color: var(--accent);
+}
+
+.tagline {
+  margin-top: 6px;
+  font-size: 15px;
+  color: var(--muted);
+  line-height: 1.5;
+}
+
+/* ── Steps ── */
+.steps {
+  margin-top: 48px;
+  display: flex;
+  flex-direction: column;
+  gap: 28px;
+  flex: 1;
+  list-style: none;
+  padding: 0;
+}
+
+.step {
+  display: flex;
+  gap: 18px;
+  align-items: flex-start;
+}
+
+.stepNum {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  border: 1.5px solid var(--line);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--accent);
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+
+.stepBody {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.stepTitle {
+  font-size: 15px;
+  font-weight: 500;
+  color: var(--text);
+  letter-spacing: -0.01em;
+}
+
+.stepDesc {
+  font-size: 13px;
+  color: var(--muted);
+  line-height: 1.6;
+}
+
+/* ── Note ── */
+.note {
+  margin-top: 36px;
+  padding: 14px 16px;
+  border-radius: 10px;
+  background: rgba(29, 158, 117, 0.06);
+  border: 1px solid rgba(29, 158, 117, 0.15);
+  font-size: 13px;
+  color: var(--muted);
+  line-height: 1.6;
+}
+
+.noteAccent {
+  color: var(--accent);
+  font-weight: 500;
+}
+
+/* ── CTA ── */
+.cta {
+  margin-top: 40px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.startBtn {
+  width: 100%;
+  padding: 15px 0;
+  border: none;
+  border-radius: 12px;
+  background: var(--accent);
+  color: #04342c;
+  font: inherit;
+  font-size: 16px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  cursor: pointer;
+  transition: background 150ms, transform 100ms;
+}
+
+.startBtn:hover {
+  background: #22b585;
+}
+
+.startBtn:active {
+  transform: scale(0.98);
+}
+
+.hint {
+  text-align: center;
+  font-size: 12px;
+  color: var(--muted);
+}
