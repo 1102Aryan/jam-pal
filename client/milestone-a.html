@@ -340,8 +340,9 @@
         // simple patterns (one bar = 16 sixteenths)
         const kickPattern  = [1, 0, 0, 0, 0, 0, 1, 0, 1, 0, 0, 0, 0, 0, 1, 0];
         const snarePattern = [0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0];
-        const bassPattern  = [0, null, null, null, 0, null, null, null, 7, null, null, null, 5, null, null, null];
         // hat density is now computed live from energy (see scheduleStep)
+        // bass pattern is rebuilt when key changes (see buildBassPattern / detectKey)
+        let bassPattern = buildBassPattern('minor'); // default until key is detected
 
         // ===== KEY / CHROMA state =====
         const chromaProfile = new Float32Array(12).fill(0); // running chroma accumulator
@@ -426,6 +427,7 @@
             detectedRoot = null;
             detectedMode = null;
             bassRootFreq = 65.41;
+            bassPattern   = buildBassPattern('minor');
             onsetGateExpiry = 0;
             keyEl.textContent = "—";
         }
@@ -460,6 +462,19 @@
             }
             prevMag = mag;
             return flux;
+        }
+
+        // ------------------------------------------------------------
+        //  Bass pattern builder — mode-aware intervallic offsets (semitones from root).
+        //  Root and fifth are tonally neutral; the third is what distinguishes major/minor.
+        //  Pattern: root → root → fifth → [major|minor] third → (repeats)
+        // ------------------------------------------------------------
+        function buildBassPattern(mode) {
+            const third = mode === 'major' ? 4 : 3;  // 4 = major 3rd, 3 = minor 3rd
+            return [0, null, null, null,
+                    0, null, null, null,
+                    7, null, null, null,
+                    third, null, null, null];
         }
 
         // ------------------------------------------------------------
@@ -528,6 +543,7 @@
                 detectedMode = best.mode;
                 // C2–B2 range (MIDI 36–47, 65–123 Hz) — bass register, clear on most speakers
                 bassRootFreq = 440 * Math.pow(2, (36 + detectedRoot - 69) / 12);
+                bassPattern  = buildBassPattern(detectedMode);  // major 3rd vs minor 3rd
                 keyEl.textContent = NOTE_NAMES[detectedRoot] + ' ' + detectedMode;
                 console.log('key →', NOTE_NAMES[detectedRoot], detectedMode,
                             '(r =', best.score.toFixed(3) + ')');
