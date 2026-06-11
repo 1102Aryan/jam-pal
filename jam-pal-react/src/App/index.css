@@ -1,0 +1,134 @@
+:root {
+  --bg: #14171c;
+  --panel: #1c2027;
+  --line: #2a2f38;
+  --text: #e7e3d8;
+  --muted: #8b9099;
+  --accent: #1d9e75;
+  --accent-dim: #0f6e56;
+  --beat: #ef9f27;
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html,
+body {
+  height: 100%;
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: ui-sans-serif, system-ui, sans-serif;
+  min-height: 100vh;
+}
+
+
+h1 {
+  font-size: 20px;
+  font-weight: 500;
+  letter-spacing: -0.01em;
+}
+
+.sub {
+  color: var(--muted);
+  font-size: 14px;
+  margin-top: 6px;
+  margin-bottom: 30px;
+}
+
+.app {
+  display: flex;
+  flex-direction:column;
+  min-height: 100vh;
+}
+
+.topBar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.accountSection {
+  display: flex;
+  align-items: center;
+}
+
+/* logo,  status */
+
+.logo {
+  
+}
+
+.status {
+
+}
+
+
+
+/* Dashboard - chord, bpm, pulsating, style, genre*/
+
+.console {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+
+.bpm {
+
+}
+
+.style {
+
+}
+
+.genre {
+
+}
+
+
+
+
+
+
+/* User info name */
+
+
+/* Bottom Playback - time sig, pause/play, metronome, shortcut info */
+
+.bottomBar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+
+}
+
+.chordProgress {
+
+}
+
+.playback {
+
+}
+
+.timeSig {
+
+}
+
+.metronome {
+
+}
+
+/* .tips {
+
+}
+
+.record {
+
+} */
