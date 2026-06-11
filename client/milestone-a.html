@@ -149,6 +149,16 @@
             transform: scale(1.18);
         }
 
+        .dyndot {
+            width: 11px;
+            height: 11px;
+            border-radius: 50%;
+            background: var(--line);
+            transition: background 200ms ease;
+        }
+
+        .dyndot.on { background: var(--accent); }
+
         #onsetDot {
             width: 18px;
             height: 18px;
@@ -206,7 +216,11 @@
         <div class="readouts">
             <div class="readout">
                 <span class="num" id="bpmNum">—</span>
-                <span class="lbl">detected BPM (clap a beat)</span>
+                <span class="lbl">detected BPM (play your guitar)</span>
+            </div>
+            <div class="readout">
+                <span class="num" id="keyNum" style="font-size:22px;">—</span>
+                <span class="lbl">detected key</span>
             </div>
             <div class="readout">
                 <span class="num" id="rmsNum">0.000</span>
@@ -217,10 +231,18 @@
             <div class="fill" id="fill"></div>
         </div>
 
+        <!-- energy / dynamics dots -->
+        <div style="margin-top:16px; display:flex; align-items:center; justify-content:center; gap:8px;">
+            <span class="lbl">dynamics</span>
+            <div class="dyndot" id="dyn1"></div>
+            <div class="dyndot" id="dyn2"></div>
+            <div class="dyndot" id="dyn3"></div>
+        </div>
+
         <!-- onset flash (B) -->
-        <div style="margin-top:18px; text-align:center;">
+        <div style="margin-top:14px; text-align:center;">
             <div id="onsetDot"></div>
-            <div class="lbl" style="margin-top:6px;">onset (flashes per clap)</div>
+            <div class="lbl" style="margin-top:6px;">onset (flashes per strum)</div>
         </div>
 
         <!-- band beat dots (D) -->
@@ -266,24 +288,35 @@
         const ctx2d = scope.getContext('2d');
         const onsetDot = document.getElementById('onsetDot');
         const beatDots = [...document.querySelectorAll('.beatdot')];
+        const dynDots  = [document.getElementById('dyn1'),
+                          document.getElementById('dyn2'),
+                          document.getElementById('dyn3')];
+        const keyEl    = document.getElementById('keyNum');
 
         const history = new Array(scope.width).fill(0);
 
         // ===== MILESTONE B state (declared ONCE, outside loop) =====
-        let baseline = 0;          // exponential running average of energy
         let lastOnsetTime = -1;    // audio-clock time of last fired onset
         const onsetTimes = [];     // all onset timestamps
 
-        const BASELINE_RATE = 0.05; // baseline tracking speed (low = slow/stable)
-        const ONSET_FACTOR = 2.5;  // clap must be this x louder than baseline  (your "delta")
-        const REFRACTORY = 0.15; // seconds to ignore new onsets after firing (your "wait")
+        // spectral flux state
+        let freqBuf = null;
+        let prevMag = null;
+        let fluxBaseline = 0;
+
+        const BASELINE_RATE = 0.05;  // baseline tracking speed
+        const ONSET_FACTOR = 2.5;    // flux must be this × above baseline to fire
+        const REFRACTORY = 0.40;     // 300 ms — long enough to absorb a full chord strum
+        const RMS_GATE = 0.003;      // mic must be above this or onset is ignored (silence guard)
+        const GUITAR_LOW_HZ = 150;   // cut below — rejects handling noise / low thuds
+        const GUITAR_HIGH_HZ = 6000; // covers guitar fundamentals + harmonics
 
         // ===== MILESTONE C state =====
         let detectedBPM = null;     // latest tempo estimate (null until enough onsets)
         const TEMPO_WINDOW = 5;     // use gaps between the last N onsets
 
         // fold a BPM into a human range by halving/doubling (your lab fold_tempo)
-        function foldTempo(bpm, low = 70, high = 160) {
+        function foldTempo(bpm, low = 55, high = 160) {
             while (bpm < low || bpm > high) {
                 if (bpm > high) bpm /= 2;
                 else bpm *= 2;
@@ -293,7 +326,8 @@
 
         // ===== MILESTONE D state (the band / scheduler) =====
         let bandPlaying = false;
-        let smoothedBPM = 100;      // what the band actually plays at (smoothed)
+        let smoothedBPM = 100;      // what the band actually plays at (slow glide)
+        let lastDisplayedBPM = null; // last value shown — dead-zone gating
         let current16th = 0;
         let nextNoteTime = 0;
         let schedulerTimer = null;
@@ -304,10 +338,35 @@
         let smoothedWobble = 0;
 
         // simple patterns (one bar = 16 sixteenths)
-        const kickPattern = [1, 0, 0, 0, 0, 0, 1, 0, 1, 0, 0, 0, 0, 0, 1, 0];
+        const kickPattern  = [1, 0, 0, 0, 0, 0, 1, 0, 1, 0, 0, 0, 0, 0, 1, 0];
         const snarePattern = [0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0];
-        const hatPattern = [1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0];
-        const bassPattern = [0, null, null, null, 0, null, null, null, 7, null, null, null, 5, null, null, null];
+        const bassPattern  = [0, null, null, null, 0, null, null, null, 7, null, null, null, 5, null, null, null];
+        // hat density is now computed live from energy (see scheduleStep)
+
+        // ===== KEY / CHROMA state =====
+        const chromaProfile = new Float32Array(12).fill(0); // running chroma accumulator
+        const CHROMA_DECAY = 0.997;   // ~5.5 s time constant at 60 fps
+        const KS_MAJOR = [6.35,2.23,3.48,2.33,4.38,4.09,2.52,5.19,2.39,3.66,2.29,2.88];
+        const KS_MINOR = [6.33,2.68,3.52,5.38,2.60,3.53,2.54,4.75,3.98,2.69,3.34,3.17];
+        const NOTE_NAMES = ['C','C♯','D','D♯','E','F','F♯','G','G♯','A','A♯','B'];
+        let detectedRoot = null;      // 0–11, C = 0
+        let detectedMode = null;      // 'major' | 'minor'
+        let bassRootFreq = 65.41;     // Hz — C2 default, updated on key detection
+        let keyFrameCount = 0;        // throttles KS correlation to once per ~30 frames
+        let onsetGateExpiry = 0;      // audio-clock time after which chroma stops accumulating
+        const ONSET_GATE_DUR = 0.28;  // seconds to accumulate after each onset (covers attack)
+        const KEY_CONFIDENCE = 0.80;  // minimum Pearson r to accept a key change
+
+        // ===== ENERGY / DYNAMICS state =====
+        let smoothedEnergy = 0;
+        const ENERGY_ATTACK  = 0.06;   // fast up  — responds to louder playing in ~0.5 s
+        const ENERGY_RELEASE = 0.008;  // slow down — sustains through gaps between strums
+        const ENERGY_LOW  = 0.003;     // RMS floor for silence
+        const ENERGY_HIGH = 0.030;     // RMS ceiling for full dynamics
+
+        function energyLevel() {
+            return Math.max(0, Math.min(1, (smoothedEnergy - ENERGY_LOW) / (ENERGY_HIGH - ENERGY_LOW)));
+        }
 
         let noiseBuffer = null;
 
@@ -335,15 +394,18 @@
 
             const source = audioCtx.createMediaStreamSource(micStream);
             analyser = audioCtx.createAnalyser();
-            analyser.fftSize = 1024;
+            analyser.fftSize = 2048;
+            analyser.smoothingTimeConstant = 0.3; // default 0.8 kills attack transients; 0.3 lets flux through
             source.connect(analyser); // NOT connected to destination (don't monitor the mic)
 
             timeBuf = new Float32Array(analyser.fftSize);
+            freqBuf = new Float32Array(analyser.frequencyBinCount);
+            prevMag = null;
             listening = true;
             toggle.textContent = "Stop";
             toggle.classList.add('on');
             bandBtn.disabled = false;
-            status.textContent = "Listening. Clap a steady beat.";
+            status.textContent = "Listening. Strum chords or pick notes to set the tempo.";
             requestAnimationFrame(loop);
         }
 
@@ -360,6 +422,116 @@
             fill.style.width = "0%";
             rmsNum.textContent = "0.000";
             bpmNum.textContent = "—";
+            chromaProfile.fill(0);
+            detectedRoot = null;
+            detectedMode = null;
+            bassRootFreq = 65.41;
+            onsetGateExpiry = 0;
+            keyEl.textContent = "—";
+        }
+
+        // ------------------------------------------------------------
+        //  Spectral flux — guitar-safe onset signal
+        //  Measures rate of change in the spectrum, band-limited to
+        //  150–6000 Hz so low-frequency handling noise is ignored.
+        // ------------------------------------------------------------
+        function computeSpectralFlux() {
+            analyser.getFloatFrequencyData(freqBuf);
+            const binWidth = audioCtx.sampleRate / analyser.fftSize;
+            const startBin = Math.round(GUITAR_LOW_HZ / binWidth);
+            const endBin = Math.min(freqBuf.length, Math.round(GUITAR_HIGH_HZ / binWidth));
+
+            // convert dB → linear magnitude for the guitar band
+            const mag = new Float32Array(endBin - startBin);
+            for (let i = startBin; i < endBin; i++) {
+                mag[i - startBin] = Math.pow(10, freqBuf[i] / 20);
+            }
+
+            if (!prevMag || prevMag.length !== mag.length) {
+                prevMag = mag;
+                return 0;
+            }
+
+            // half-wave rectified flux: sum only positive differences (attacks only)
+            let flux = 0;
+            for (let i = 0; i < mag.length; i++) {
+                const diff = mag[i] - prevMag[i];
+                if (diff > 0) flux += diff;
+            }
+            prevMag = mag;
+            return flux;
+        }
+
+        // ------------------------------------------------------------
+        //  Chroma accumulation — bins FFT magnitudes into 12 pitch classes.
+        //  Reuses freqBuf that computeSpectralFlux() already populated.
+        //  Restricted to 80–1200 Hz (guitar fundamentals) to avoid harmonic
+        //  smearing pulling energy into the wrong pitch class.
+        // ------------------------------------------------------------
+        function updateChroma(now) {
+            // always decay so old data ages out
+            for (let i = 0; i < 12; i++) chromaProfile[i] *= CHROMA_DECAY;
+
+            // only accumulate during the attack window of an intentional onset.
+            // this shuts out sympathetic open-string resonance (which would otherwise
+            // push the chroma toward E/A/D/G/B = C-major territory on a standard guitar).
+            if (now > onsetGateExpiry) return;
+
+            const binWidth = audioCtx.sampleRate / analyser.fftSize;
+            for (let bin = 1; bin < freqBuf.length; bin++) {
+                const freq = bin * binWidth;
+                if (freq < 80 || freq > 1200) continue;
+                if (freqBuf[bin] < -80) continue;
+                const mag = Math.pow(10, freqBuf[bin] / 20);
+                const midi = 69 + 12 * Math.log2(freq / 440);
+                const pc = ((Math.round(midi) % 12) + 12) % 12;
+                chromaProfile[pc] += mag;
+            }
+        }
+
+        function pearsonCorr(a, b) {
+            const n = a.length;
+            const ma = a.reduce((s,v)=>s+v,0)/n, mb = b.reduce((s,v)=>s+v,0)/n;
+            let num=0, da2=0, db2=0;
+            for (let i=0;i<n;i++){const da=a[i]-ma,db=b[i]-mb; num+=da*db; da2+=da*da; db2+=db*db;}
+            return da2*db2 > 0 ? num/Math.sqrt(da2*db2) : 0;
+        }
+
+        // Krumhansl-Schmuckler key-finding — causal version of lab detect_key().
+        // Runs every ~30 frames (~500 ms); updates bass root frequency on change.
+        function detectKey() {
+            const total = chromaProfile.reduce((a,b)=>a+b, 0);
+            if (total < 1.0) return;   // not enough signal yet
+
+            const norm = Array.from(chromaProfile, v => v / total);
+            let best = { score: -Infinity, root: 0, mode: 'minor' };
+
+            for (let tonic = 0; tonic < 12; tonic++) {
+                for (const [mode, ks] of [['major', KS_MAJOR], ['minor', KS_MINOR]]) {
+                    const tSum = ks.reduce((a,b)=>a+b, 0);
+                    const t = ks.map(v => v / tSum);
+                    // np.roll(ks, tonic): rotated[i] = t[(i – tonic + 12) % 12]
+                    const rot = Array.from({length:12}, (_,i) => t[(i-tonic+12)%12]);
+                    const score = pearsonCorr(norm, rot);
+                    if (score > best.score) best = { score, root: tonic, mode };
+                }
+            }
+
+            // require high confidence before committing — low scores mean ambiguous input
+            if (best.score < KEY_CONFIDENCE) {
+                console.log('key ambiguous (r =', best.score.toFixed(3) + ') — holding', NOTE_NAMES[detectedRoot ?? 0]);
+                return;
+            }
+
+            if (best.root !== detectedRoot || best.mode !== detectedMode) {
+                detectedRoot = best.root;
+                detectedMode = best.mode;
+                // C2–B2 range (MIDI 36–47, 65–123 Hz) — bass register, clear on most speakers
+                bassRootFreq = 440 * Math.pow(2, (36 + detectedRoot - 69) / 12);
+                keyEl.textContent = NOTE_NAMES[detectedRoot] + ' ' + detectedMode;
+                console.log('key →', NOTE_NAMES[detectedRoot], detectedMode,
+                            '(r =', best.score.toFixed(3) + ')');
+            }
         }
 
         // ------------------------------------------------------------
@@ -378,16 +550,36 @@
             pushHistory(rms);
             drawScope();
 
-            // ===== MILESTONE B: onset detection =====
+            // energy envelope: fast attack, slow release so the band doesn't thin mid-phrase
+            const eRate = rms > smoothedEnergy ? ENERGY_ATTACK : ENERGY_RELEASE;
+            smoothedEnergy += eRate * (rms - smoothedEnergy);
+            const e = energyLevel();
+            dynDots[0].classList.toggle('on', e > 0.05);
+            dynDots[1].classList.toggle('on', e > 0.40);
+            dynDots[2].classList.toggle('on', e > 0.75);
+
+            // ===== MILESTONE B: onset detection (spectral flux) =====
             const now = audioCtx.currentTime;
-            baseline += BASELINE_RATE * (rms - baseline);
+            const flux = computeSpectralFlux();          // also populates freqBuf
+            updateChroma(now);                           // bins freqBuf → chromaProfile (gated)
+            if (++keyFrameCount % 30 === 0) detectKey(); // KS every ~500 ms
+            fluxBaseline += BASELINE_RATE * (flux - fluxBaseline);
 
-            const loudEnough = rms > baseline * ONSET_FACTOR;
+            const loudEnough = flux > fluxBaseline * ONSET_FACTOR;
             const pastRefractory = (now - lastOnsetTime) > REFRACTORY;
-            const baselineReady = baseline > 0.0005;
+            const baselineReady = prevMag !== null && fluxBaseline > 1e-6;
+            const aboveGate = rms > RMS_GATE;  // silence guard — no onset from FFT noise alone
 
-            if (loudEnough && pastRefractory && baselineReady) {
+            // clear stale BPM when silent for >3 seconds
+            if (detectedBPM !== null && (now - lastOnsetTime) > 3.0) {
+                detectedBPM = null;
+                lastDisplayedBPM = null;
+                bpmNum.textContent = "—";
+            }
+
+            if (loudEnough && pastRefractory && baselineReady && aboveGate) {
                 lastOnsetTime = now;
+                onsetGateExpiry = now + ONSET_GATE_DUR; // open chroma gate for this note's attack
                 onsetTimes.push(now);
                 flashOnset();
 
@@ -404,12 +596,22 @@
                     "rate:", wobbleToFollowRate(smoothedWobble).toFixed(3));
             }
 
+            // glide smoothedBPM toward detectedBPM every frame so the display and
+            // the band (when not playing) both change gradually rather than jumping
+            if (detectedBPM !== null && !bandPlaying) {
+                smoothedBPM += wobbleToFollowRate(smoothedWobble) * (detectedBPM - smoothedBPM);
+            }
+
             requestAnimationFrame(loop);
         }
 
         // Take the gaps between the last few onsets, use their MEDIAN (robust to
         // one bad clap), convert to BPM, fold into a human range.
         function updateTempo() {
+            // drop timestamps older than 8 seconds so stale clusters don't skew the median
+            const cutoff = onsetTimes[onsetTimes.length - 1] - 8.0;
+            while (onsetTimes.length > 0 && onsetTimes[0] < cutoff) onsetTimes.shift();
+
             if (onsetTimes.length < 3) return;          // need a couple of gaps first
 
             // build the gaps between the last few onsets FIRST
@@ -429,14 +631,20 @@
             const medianGap = sorted[Math.floor(sorted.length / 2)];
             if (medianGap <= 0) return;
             detectedBPM = foldTempo(60 / medianGap);
-            bpmNum.textContent = Math.round(detectedBPM);
+
+            // update display once per onset, only when tempo shifts by ≥3 BPM
+            const rounded = Math.round(detectedBPM);
+            if (lastDisplayedBPM === null || Math.abs(rounded - lastDisplayedBPM) >= 3) {
+                bpmNum.textContent = rounded;
+                lastDisplayedBPM = rounded;
+            }
         }
 
         function wobbleToFollowRate(wobble) {
             const STEADY = 0.1;   // wobble at/below this = rock steady -> follow hard
             const MESSY = 0.4;   // wobble at/above this = falling apart -> hold firm
-            const HIGH_RATE = 0.15; // eager follow
-            const LOW_RATE = 0.02; // stubborn anchor
+            const HIGH_RATE = 0.10; // steady playing → converges in ~1 s (~1-2 beats)
+            const LOW_RATE = 0.05; // unsteady playing → still follows but more anchored
 
             // how far through the steady->messy range are we? (0 = steady, 1 = messy)
             let t = (wobble - STEADY) / (MESSY - STEADY);
@@ -495,8 +703,7 @@
             // This is the "follow" — and FOLLOW_RATE is the seed of Phase 3's
             // adjustable forgiveness. If no tempo detected yet, keep current.
             if (detectedBPM) {
-                const rate = wobbleToFollowRate(smoothedWobble);
-                smoothedBPM += rate * (detectedBPM - smoothedBPM);
+                smoothedBPM += wobbleToFollowRate(smoothedWobble) * (detectedBPM - smoothedBPM);
             }
 
             while (nextNoteTime < audioCtx.currentTime + SCHEDULE_AHEAD) {
@@ -509,10 +716,18 @@
         }
 
         function scheduleStep(step, time) {
-            if (kickPattern[step]) playKick(time);
-            if (snarePattern[step]) playSnare(time);
-            if (hatPattern[step]) playHat(time);
-            if (bassPattern[step] !== null) playBass(bassPattern[step], time);
+            const e = energyLevel();
+
+            if (kickPattern[step])  playKick(time,  0.35 + 0.65 * e);
+            if (snarePattern[step]) playSnare(time, 0.25 + 0.75 * e);
+
+            // hat density: quarter notes (soft) → 8th notes (medium) → 16th notes (loud)
+            const hatHit = e < 0.33 ? (step % 4 === 0)
+                         : e < 0.66 ? (step % 2 === 0)
+                         : true;
+            if (hatHit) playHat(time, 0.08 + 0.22 * e);
+
+            if (bassPattern[step] !== null) playBass(bassPattern[step], time, 0.20 + 0.30 * e);
             noteQueue.push({ step, time });
         }
 
@@ -538,38 +753,38 @@
         requestAnimationFrame(drawBeats);
 
         // ---- synth voices ----
-        function playKick(time) {
+        function playKick(time, gain = 1) {
             const o = audioCtx.createOscillator(), g = audioCtx.createGain();
             o.frequency.setValueAtTime(150, time);
             o.frequency.exponentialRampToValueAtTime(50, time + 0.12);
-            g.gain.setValueAtTime(1, time);
+            g.gain.setValueAtTime(gain, time);
             g.gain.exponentialRampToValueAtTime(0.001, time + 0.18);
             o.connect(g).connect(audioCtx.destination);
             o.start(time); o.stop(time + 0.2);
         }
-        function playSnare(time) {
+        function playSnare(time, gain = 0.7) {
             const n = audioCtx.createBufferSource(); n.buffer = noiseBuffer;
             const hp = audioCtx.createBiquadFilter(); hp.type = 'highpass'; hp.frequency.value = 1500;
             const g = audioCtx.createGain();
-            g.gain.setValueAtTime(0.7, time); g.gain.exponentialRampToValueAtTime(0.01, time + 0.12);
+            g.gain.setValueAtTime(gain, time); g.gain.exponentialRampToValueAtTime(0.01, time + 0.12);
             n.connect(hp).connect(g).connect(audioCtx.destination);
             n.start(time); n.stop(time + 0.15);
         }
-        function playHat(time) {
+        function playHat(time, gain = 0.25) {
             const n = audioCtx.createBufferSource(); n.buffer = noiseBuffer;
             const hp = audioCtx.createBiquadFilter(); hp.type = 'highpass'; hp.frequency.value = 7000;
             const g = audioCtx.createGain();
-            g.gain.setValueAtTime(0.25, time); g.gain.exponentialRampToValueAtTime(0.001, time + 0.05);
+            g.gain.setValueAtTime(gain, time); g.gain.exponentialRampToValueAtTime(0.001, time + 0.05);
             n.connect(hp).connect(g).connect(audioCtx.destination);
             n.start(time); n.stop(time + 0.06);
         }
-        function playBass(semi, time) {
+        function playBass(semi, time, gain = 0.5) {
             const o = audioCtx.createOscillator(), g = audioCtx.createGain(), lp = audioCtx.createBiquadFilter();
             o.type = 'sawtooth';
-            o.frequency.setValueAtTime(55 * Math.pow(2, semi / 12), time);
+            o.frequency.setValueAtTime(bassRootFreq * Math.pow(2, semi / 12), time);
             lp.type = 'lowpass'; lp.frequency.value = 700;
             g.gain.setValueAtTime(0.0001, time);
-            g.gain.linearRampToValueAtTime(0.5, time + 0.01);
+            g.gain.linearRampToValueAtTime(gain, time + 0.01);
             g.gain.exponentialRampToValueAtTime(0.001, time + 0.35);
             o.connect(lp).connect(g).connect(audioCtx.destination);
             o.start(time); o.stop(time + 0.4);
