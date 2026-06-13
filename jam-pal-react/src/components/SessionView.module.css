@@ -12,7 +12,6 @@
   justify-content: space-between;
   padding: 0 24px;
   height: 56px;
-  /* border-bottom: 1px solid var(--line); */
   flex-shrink: 0;
 }
 
@@ -21,19 +20,6 @@
   font-weight: 700;
   letter-spacing: -0.03em;
   color: var(--accent);
-}
-
-.statusChip {
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  padding: 4px 12px;
-  border-radius: 999px;
-  background: rgba(29, 158, 117, 0.08);
-  border: 1px solid rgba(29, 158, 117, 0.2);
-  font-size: 13px;
-  color: var(--text);
-  letter-spacing: 0.01em;
 }
 
 .statusDot {
@@ -46,7 +32,7 @@
 
 .statusDotActive {
   background: var(--accent);
-  box-shadow: 0 0 5px var(--accent);
+  box-shadow: 0 0 6px var(--accent);
 }
 
 .logoItem {
@@ -83,21 +69,112 @@
 .main {
   flex: 1;
   display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* ── Ring ── */
+
+/* Wrapper — all layers sit inside here */
+.ringWrap {
+  position: relative;
+  width: 360px;
+  height: 360px;
+  flex-shrink: 0;
+}
+
+/* Dark interior + subtle inner smoke */
+.ring {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background:
+    radial-gradient(ellipse at 38% 42%, rgba(155, 111, 255, 0.06) 0%, transparent 55%),
+    radial-gradient(ellipse at 64% 58%, rgba(0, 212, 255, 0.05) 0%, transparent 55%),
+    var(--bg);
+}
+
+/* Spinning conic-gradient border — the "flowing gradient" effect */
+.ring::after {
+  content: '';
+  position: absolute;
+  inset: -2px;
+  border-radius: 50%;
+  background: conic-gradient(
+    from 0deg,
+    #9b6fff  0%,
+    #00d4ff 38%,
+    #c084fc 68%,
+    #9b6fff 100%
+  );
+  animation: spinGradient 6s linear infinite;
+  /* cut out the centre so only a 3 px band shows */
+  -webkit-mask: radial-gradient(circle at center, transparent calc(100% - 3px), black calc(100% - 3px));
+          mask: radial-gradient(circle at center, transparent calc(100% - 3px), black calc(100% - 3px));
+}
+
+@keyframes spinGradient {
+  to { transform: rotate(360deg); }
+}
+
+/* Ambient glow — breathes slowly between purple and cyan */
+.ringGlow {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  box-shadow:
+    0 0 45px 8px  rgba(155, 111, 255, 0.20),
+    0 0 90px 16px rgba(0,   212, 255, 0.12),
+    0 0 0    1px  rgba(155, 111, 255, 0.08);
+  animation: ambientGlow 4s ease-in-out infinite alternate;
+  pointer-events: none;
+}
+
+@keyframes ambientGlow {
+  0%   { box-shadow: 0 0 45px  8px rgba(155,111,255,0.20), 0 0  90px 16px rgba(0,212,255,0.12); }
+  100% { box-shadow: 0 0 65px 12px rgba(0,212,255,0.30),   0 0 110px 22px rgba(155,111,255,0.16); }
+}
+
+/* Beat-flash layer — only this scales/brightens on each beat */
+.ringBeat {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  pointer-events: none;
+  opacity: 0;
+}
+
+@keyframes beatFlash {
+  0%   { opacity: 0; box-shadow: none; }
+  15%  { opacity: 1; box-shadow: 0 0 80px 20px rgba(155,111,255,0.55), 0 0 150px 30px rgba(0,212,255,0.38); }
+  100% { opacity: 0; box-shadow: none; }
+}
+
+.ringPulse {
+  animation: beatFlash 0.50s ease-out;
+}
+
+/* Content centred inside — never animated */
+.ringContent {
+  position: absolute;
+  inset: 0;
+  display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 22px;
+  gap: 14px;
 }
 
 /* BPM */
 .bpmRow {
   display: flex;
-  align-items: baseline;
-  gap: 10px;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
 }
 
 .bpmNum {
-  font-size: 100px;
+  font-size: 96px;
   font-variant-numeric: tabular-nums;
   letter-spacing: -0.05em;
   line-height: 1;
@@ -105,28 +182,33 @@
 }
 
 .bpmUnit {
-  font-size: 24px;
+  font-size: 13px;
   color: var(--muted);
   font-weight: 400;
-  letter-spacing: -0.01em;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
 }
 
 /* Key */
 .keyRow {
   display: flex;
-  align-items: baseline;
-  gap: 8px;
-  font-size: 20px;
-}
-
-.keyLabel {
-  color: var(--muted);
-  font-weight: 400;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
 }
 
 .keyValue {
+  font-size: 22px;
   color: var(--text);
   font-weight: 500;
+}
+
+.keyLabel {
+  font-size: 11px;
+  color: var(--muted);
+  font-weight: 400;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
 }
 
 /* Beat dots */
@@ -136,17 +218,39 @@
 }
 
 .beatDot {
-  width: 14px;
-  height: 14px;
+  width: 10px;
+  height: 10px;
   border-radius: 50%;
   background: var(--line);
-  transition: background 60ms linear, transform 60ms linear;
+  transition: background 60ms linear, transform 60ms linear, box-shadow 60ms linear;
 }
 
 .beatDotOn {
-  background: var(--beat);
-  transform: scale(1.2);
+  background: var(--accent);
+  transform: scale(1.3);
+  box-shadow: 0 0 8px var(--accent);
 }
+
+/* Jam mode banner */
+@keyframes modeIn {
+  from { opacity: 0; transform: scale(0.88); }
+  to   { opacity: 1; transform: scale(1); }
+}
+
+.modeBanner {
+  padding: 5px 16px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  font-size: 13px;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  animation: modeIn 280ms cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+}
+
+.modeBanner_breakdown { border-color: #f59e0b; color: #f59e0b; background: rgba(245,158,11,0.08); }
+.modeBanner_solo      { border-color: var(--accent); color: var(--accent); background: rgba(0,212,180,0.10); }
+.modeBanner_call      { border-color: #818cf8; color: #818cf8; background: rgba(129,140,248,0.08); }
+.modeBanner_response  { border-color: #f472b6; color: #f472b6; background: rgba(244,114,182,0.08); }
 
 /* Genre / style chips */
 .chips {
@@ -157,8 +261,8 @@
 .chip {
   padding: 5px 14px;
   border-radius: 999px;
-  border: 1px solid var(--line);
-  font-size: 13px;
+  border: 1px solid rgba(155, 111, 255, 0.22);
+  font-size: 12px;
   color: var(--muted);
   letter-spacing: 0.01em;
 }
@@ -169,7 +273,6 @@
   align-items: center;
   padding: 0 24px;
   height: 90px;
-  /* border-top: 1px solid var(--line); */
   flex-shrink: 0;
   gap: 16px;
 }
@@ -198,13 +301,14 @@
   border-radius: 50%;
   border: none;
   cursor: pointer;
-  background: var(--accent);
-  color: #04342c;
+  background: linear-gradient(135deg, var(--ring-a), var(--accent));
+  color: #fff;
   display: flex;
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
-  transition: background 150ms, transform 100ms;
+  transition: opacity 150ms, transform 100ms;
+  box-shadow: 0 0 22px rgba(0, 212, 180, 0.30);
 }
 
 .playBtn svg {
@@ -215,11 +319,11 @@
 }
 
 .playBtn:hover {
-  background: #22b585;
+  opacity: 0.85;
 }
 
 .playBtn:not(.playBtnActive) svg {
-  transform: translateX(2px); 
+  transform: translateX(2px);
 }
 
 .playBtn:active {
@@ -227,8 +331,8 @@
 }
 
 .playBtnActive {
-  background: #e0563f;
-  color: #fff;
+  background: #c0365a;
+  box-shadow: 0 0 22px rgba(192, 54, 90, 0.28);
 }
 
 .rightControls {
@@ -257,7 +361,7 @@
 .overlay {
   position: fixed;
   inset: 0;
-  background: rgba(14, 16, 20, 0.75);
+  background: rgba(6, 9, 22, 0.82);
   backdrop-filter: blur(6px);
   display: flex;
   align-items: center;
@@ -303,17 +407,17 @@
   padding: 12px 0;
   border: none;
   border-radius: 10px;
-  background: var(--accent);
-  color: #04342c;
+  background: linear-gradient(135deg, var(--ring-a), var(--accent));
+  color: #fff;
   font: inherit;
   font-size: 15px;
   font-weight: 600;
   cursor: pointer;
-  transition: background 150ms;
+  transition: opacity 150ms;
 }
 
 .overlayBtn:hover {
-  background: #22b585;
+  opacity: 0.85;
 }
 
 /*  Count In  */

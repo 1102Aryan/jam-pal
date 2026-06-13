@@ -1,7 +1,22 @@
 import {
   BASELINE_RATE, ONSET_FACTOR, REFRACTORY, RMS_GATE, ONSET_GATE_DUR,
-  ENERGY_ATTACK, ENERGY_RELEASE,
+  ENERGY_ATTACK, ENERGY_RELEASE, LOCKED_FOLLOW_SCALE, BASS_SAMPLE_MIDI,
 } from './config.js';
+
+// Exponentially decaying noise burst — a cheap, convincing room impulse
+// response for the band's reverb send.
+function makeRoomImpulse(ctx, seconds, decay) {
+  const rate = ctx.sampleRate;
+  const len  = Math.floor(rate * seconds);
+  const buf  = ctx.createBuffer(2, len, rate);
+  for (let ch = 0; ch < 2; ch++) {
+    const d = buf.getChannelData(ch);
+    for (let i = 0; i < len; i++) {
+      d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / len, decay);
+    }
+  }
+  return buf;
+}
 import {
   computeSpectralFlux, updateChroma, detectKey, updateTempo,
   wobbleToFollowRate, energyLevel,
@@ -35,6 +50,8 @@ export function createAudioEngine(callbacks = {}) {
   let smoothedEnergy   = 0;
   let smoothedBPM      = 100;
   let bandPlaying      = false;
+  let bandBus          = null;
+  const samples        = {};
 
   // ---- public getters used by the scheduler ----
   const api = {
@@ -47,16 +64,30 @@ export function createAudioEngine(callbacks = {}) {
     getSmoothedWobble: () => smoothedWobble,
     isBandPlaying:   () => bandPlaying,
     setBandPlaying:  (v) => { bandPlaying = v; },
+    getSamples:      () => samples,
+    getBandBus:      () => bandBus,
+
+    // player onsets within the last `seconds` — the brain uses this to thin
+    // out when the player goes sparse
+    getRecentOnsetCount(seconds) {
+      if (!audioCtx) return 0;
+      const cutoff = audioCtx.currentTime - seconds;
+      let n = 0;
+      for (let i = onsetTimes.length - 1; i >= 0 && onsetTimes[i] > cutoff; i--) n++;
+      return n;
+    },
 
     // initialise smoothedBPM to detectedBPM so the band enters at your tempo
     snapToDetectedBPM() {
       if (detectedBPM !== null) smoothedBPM = detectedBPM;
     },
 
-    // called every scheduler tick so the band tempo glides toward detected BPM
+    // called every scheduler tick so the band tempo glides toward detected BPM;
+    // once the band is playing it follows less eagerly — it holds the pocket
+    // and lets the player float rather than chasing every fluctuation
     syncBandBPM() {
       if (detectedBPM !== null) {
-        smoothedBPM += wobbleToFollowRate(smoothedWobble) * (detectedBPM - smoothedBPM);
+        smoothedBPM += LOCKED_FOLLOW_SCALE * wobbleToFollowRate(smoothedWobble) * (detectedBPM - smoothedBPM);
       }
     },
 
@@ -73,6 +104,26 @@ export function createAudioEngine(callbacks = {}) {
       const AudioCtx = window.AudioContext || /** @type {any} */ (window).webkitAudioContext;
       audioCtx = new AudioCtx();
       if (audioCtx.state === 'suspended') await audioCtx.resume();
+      loadKit(); // async — fills samples{}; synth voices are the fallback
+
+      // band bus: every band voice goes through one compressor ("glue") with
+      // a small room-reverb send, instead of raw hits straight to the output
+      bandBus = audioCtx.createGain();
+      const comp = audioCtx.createDynamicsCompressor();
+      comp.threshold.value = -18;
+      comp.knee.value      = 12;
+      comp.ratio.value     = 4;
+      comp.attack.value    = 0.003;
+      comp.release.value   = 0.15;
+      const verb = audioCtx.createConvolver();
+      verb.buffer = makeRoomImpulse(audioCtx, 1.1, 2.8);
+      const send = audioCtx.createGain();
+      send.gain.value = 0.16;
+      bandBus.connect(comp);
+      comp.connect(audioCtx.destination);
+      comp.connect(send);
+      send.connect(verb);
+      verb.connect(audioCtx.destination);
 
       // shared white-noise buffer for snare + hat synthesis
       const len = Math.floor(audioCtx.sampleRate * 0.2);
@@ -110,7 +161,8 @@ export function createAudioEngine(callbacks = {}) {
       if (rafId) { cancelAnimationFrame(rafId); rafId = null; }
       if (micStream) micStream.getTracks().forEach(t => t.stop());
       if (audioCtx)  audioCtx.close();
-      audioCtx = analyser = micStream = noiseBuffer = null;
+      Object.keys(samples).forEach(k => delete samples[k]);
+      audioCtx = analyser = micStream = noiseBuffer = bandBus = null;
       callbacks.onListeningChange?.(false);
       callbacks.onStatus?.('Stopped.');
       callbacks.onRms?.(0);
@@ -185,6 +237,34 @@ export function createAudioEngine(callbacks = {}) {
     }
 
     rafId = requestAnimationFrame(loop);
+  }
+  async function loadSample(url) {
+    const res = await fetch(url);
+    if (!res.ok) throw new Error(`HTTP ${res.status} for ${url}`);
+    const ab = await res.arrayBuffer();
+    return audioCtx.decodeAudioData(ab);
+  }
+
+  // each sample loads independently so one missing file (e.g. crash.wav)
+  // doesn't knock out the whole kit — anything missing falls back to synthesis
+  async function loadKit() {
+    const names   = ['kick', 'snare', 'hihat', 'openhat', 'crash'];
+    const results = await Promise.allSettled(names.map(n => loadSample(`/samples/${n}.wav`)));
+    results.forEach((r, i) => {
+      if (r.status === 'fulfilled') samples[names[i]] = r.value;
+      else console.warn(`[JamPal] ${names[i]}.wav not loaded — using synthesis:`, r.reason?.message);
+    });
+
+    // bass multisample — keyed by MIDI note; missing notes just don't load
+    samples.bass = {};
+    const bassResults = await Promise.allSettled(
+      BASS_SAMPLE_MIDI.map(m => loadSample(`/samples/bass-${m}.wav`))
+    );
+    bassResults.forEach((r, i) => {
+      if (r.status === 'fulfilled') samples.bass[BASS_SAMPLE_MIDI[i]] = r.value;
+    });
+    const nBass = Object.keys(samples.bass).length;
+    console.log(nBass ? `[JamPal] Loaded ${nBass} bass samples ✓` : '[JamPal] No bass samples — using synth bass');
   }
 
   return api;

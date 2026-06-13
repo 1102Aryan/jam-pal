@@ -15,7 +15,12 @@ const STEPS = [
   },
 ];
 
-function SetupScreen({ onStart }) {
+
+function SetupScreen({
+  onStart,
+  genre = 'blues', style = 'supportive', timeSig = '4/4',
+  onGenreChange, onStyleChange, onTimeSigChange,
+}) {
   return (
     <div className={styles.page}>
       <div>
@@ -39,6 +44,46 @@ function SetupScreen({ onStart }) {
         <span className={styles.noteAccent}>Best results:</span> play full chords rather than single
         notes — chords give the key detector enough pitch information to be confident.
         Key detection scores are logged to the console (F12) if you want to see the confidence.
+      </div>
+
+      <div className={styles.configField}>
+        <label className={styles.configLabel}>Genre</label>
+        <select
+          value={genre}
+          onChange={(e) => onGenreChange?.(e.target.value)}
+          className={styles.selectDropdown}
+        >
+          <option value="rock"> Rock</option>
+          <option value="pop"> Pop</option>
+          <option value="shoegaze"> Shoegaze</option>
+          <option value="blues"> Blues</option>
+        </select>
+      </div>
+
+      <div className={styles.configField}>
+        <label className={styles.configLabel}>Style</label>
+        <select
+          value={style}
+          onChange={(e) => onStyleChange?.(e.target.value)}
+          className={styles.selectDropdown}
+        >
+          <option value="supportive">Supportive</option>
+          <option value="lead">Lead Band</option>
+          <option value="ambient">Ambient Space</option>
+        </select>
+      </div>
+
+      <div className={styles.configField}>
+        <label className={styles.configLabel}>Time Sig</label>
+        <select
+          value={timeSig}
+          onChange={(e) => onTimeSigChange?.(e.target.value)}
+          className={styles.selectDropdown}
+        >
+          <option value="4/4">4 / 4</option>
+          <option value="3/4">3 / 4</option>
+          <option value="6/8">6 / 8</option>
+        </select>
       </div>
 
       <div className={styles.cta}>

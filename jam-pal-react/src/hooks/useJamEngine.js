@@ -1,8 +1,10 @@
 import { useRef, useState, useCallback, useEffect } from 'react';
 import { createAudioEngine } from '../engine/audioEngine.js';
 import { createScheduler } from '../engine/scheduler.js';
+import { createBrain } from '../engine/bandBrain.js';
+import { createJamDirector } from '../engine/jamDirector.js';
 
-export function useJamEngine() {
+export function useJamEngine({ style = 'supportive', genre = 'blues' } = {}) {
   const [listening,    setListening]    = useState(false);
   const [bandPlaying,  setBandPlaying]  = useState(false);
   const [bandReady,    setBandReady]    = useState(false); // count-in done, waiting for first BPM
@@ -17,9 +19,13 @@ export function useJamEngine() {
   const [countIn,      setCountIn]      = useState(null);
   const [isCountingIn, setIsCountingIn] = useState(false);
   const [chordHistory, setChordHistory] = useState([]);
+  const [jamMode,      setJamMode]      = useState(null);
 
   const engineRef    = useRef(null);
   const schedulerRef = useRef(null);
+  const directorRef  = useRef(null);
+  const styleRef     = useRef(style);
+  useEffect(() => { styleRef.current = style; }, [style]);
 
   function ensureEngine() {
     if (!engineRef.current) {
@@ -49,7 +55,16 @@ export function useJamEngine() {
       return;
     }
     if (!schedulerRef.current) {
-      schedulerRef.current = createScheduler(engine);
+      const sched = createScheduler(engine, createBrain({ genre }));
+      schedulerRef.current = sched;
+
+      const director = createJamDirector({
+        getStyle:     () => styleRef.current,
+        onModeChange: setJamMode,
+        setMuteMask:  (m) => sched.setMuteMask(m),
+      });
+      directorRef.current = director;
+      sched.setOnBar(director.onBar);
     }
     // count-in fires immediately so the user gets the pulse
     setCountIn(3);
@@ -60,13 +75,19 @@ export function useJamEngine() {
     setIsCountingIn(false);
     setCountIn(null);
     setBandReady(false);
-    schedulerRef.current?.stop(); 
+    schedulerRef.current?.stop({ ending: true });
     schedulerRef.current = null;
-    engineRef.current?.stop();
+    directorRef.current?.reset();
+    directorRef.current = null;
+    const engine = engineRef.current;
     engineRef.current = null;
+    setListening(false);
+    // keep the AudioContext alive long enough for the ending hit to ring out
+    setTimeout(() => engine?.stop(), 800);
     setBandPlaying(false);
     setActiveBeat(-1);
     setChordHistory([]);
+    setJamMode(null);
   }, []);
 
   // append each new key detection to the chord history (last 8 kept)
@@ -113,6 +134,7 @@ export function useJamEngine() {
   return {
     listening, bandPlaying, bandReady,
     bpm, musicKey, chordHistory, rms, energy, activeBeat, status, onsetFlash, micBlocked, countIn,
+    jamMode,
     toggleMic,
   };
 }

@@ -21,6 +21,9 @@ A real-time jam partner for a beginner guitarist. It listens through the microph
 3. **Tempo** — the spacing between onsets gives a running BPM estimate.
 4. **Steadiness** — the variance of recent onset spacing measures how consistent the player is.
 5. **Follow** — a look-ahead scheduler plays the accompaniment, easing its tempo toward the player. How *hard* it follows is driven by steadiness: steady playing is tracked closely, unsteady playing is anchored.
+6. **key** — detects the current key of the chord progression.
+7. **Real sample** — Uses drum samples instead of synthesised drum audio.
+
 
 The real-time audio (scheduling, sample playback) runs client-side because network latency would break musical timing.
 
@@ -29,6 +32,14 @@ The real-time audio (scheduling, sample playback) runs client-side because netwo
 <div align="center">
   <img src="images/screenshots/mainPage.png" alt="Main Page" width="800" />
 </div>
+
+## Current Features
+Here are the features implemented:
+- Blues genre style drum and bass beat developed (other genres will be developed soon)
+- breakdowns - drops to one instrument so player learns to listen and finds when to re-enter
+- solo space - band mutes and allows you to lead/solo
+- call and response - the band plays a phrase, leaves a gap for you to answer
+
 
 ## Status 
 The current application is a work in progress and will include these specific features:

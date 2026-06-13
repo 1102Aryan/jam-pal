@@ -8,7 +8,7 @@
   margin: 0 auto;
 }
 
-/* ── Header ── */
+/* Header */
 .logo {
   font-size: 28px;
   font-weight: 700;
@@ -23,7 +23,7 @@
   line-height: 1.5;
 }
 
-/* ── Steps ── */
+/*  Steps  */
 .steps {
   margin-top: 48px;
   display: flex;
@@ -74,7 +74,7 @@
   line-height: 1.6;
 }
 
-/* ── Note ── */
+/*  Note  */
 .note {
   margin-top: 36px;
   padding: 14px 16px;
@@ -91,7 +91,51 @@
   font-weight: 500;
 }
 
-/* ── CTA ── */
+
+/*  Configuration  */
+.configuration {
+  display: flex;
+  gap: 1.5rem;
+  justify-content: center;
+  align-items: center;
+  padding: 1.2rem;
+  background-color: rgba(255, 255, 255, 0.03);
+  border-radius: 8px;
+  margin-bottom: 1.5rem;
+  border: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+
+.configField {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  flex: 1;
+}
+
+
+.configLabel {
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: rgba(255, 255, 255, 0.4);
+  font-weight: 600;
+}
+
+.selectDropdown {
+  width: 100%;
+  padding: 0.6rem 1rem;
+  font-size: 0.9rem;
+  background-color: #161b22; 
+  color: #e6edf3;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 6px;
+  cursor: pointer;
+  outline: none;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+/*  CTA   */
 .cta {
   margin-top: 40px;
   display: flex;
@@ -115,7 +159,7 @@
 }
 
 .startBtn:hover {
-  background: #22b585;
+  background: #00e5ca;
 }
 
 .startBtn:active {
