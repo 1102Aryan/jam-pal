@@ -42,10 +42,19 @@ function App() {
       chordHistory={engine.chordHistory}
       onToggleMic={engine.toggleMic}
       onToggleBand={engine.toggleBand}
+      isRecording={engine.isRecording}
+      onToggleRecording={engine.toggleRecording}
+      loopStatus={engine.loopStatus}
+      onToggleLoop={engine.toggleLoop}
       genre={genre}
       style={style}
       timeSig={timeSig}
       jamMode={engine.jamMode}
+      timing={engine.timing}
+      drumVolume={engine.drumVolume}
+      bassVolume={engine.bassVolume}
+      onDrumVolume={engine.setDrumVolume}
+      onBassVolume={engine.setBassVolume}
     />
   );
 }

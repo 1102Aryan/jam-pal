@@ -7,7 +7,7 @@ import { createJamDirector } from '../engine/jamDirector.js';
 export function useJamEngine({ style = 'supportive', genre = 'blues' } = {}) {
   const [listening,    setListening]    = useState(false);
   const [bandPlaying,  setBandPlaying]  = useState(false);
-  const [bandReady,    setBandReady]    = useState(false); // count-in done, waiting for first BPM
+  const [bandReady,    setBandReady]    = useState(false); 
   const [bpm,          setBpm]          = useState(null);
   const [musicKey,     setMusicKey]     = useState(null);
   const [rms,          setRms]          = useState(0);
@@ -20,12 +20,30 @@ export function useJamEngine({ style = 'supportive', genre = 'blues' } = {}) {
   const [isCountingIn, setIsCountingIn] = useState(false);
   const [chordHistory, setChordHistory] = useState([]);
   const [jamMode,      setJamMode]      = useState(null);
+  const [timing,       setTiming]       = useState(null);
+  const [drumVolume,   setDrumVolState] = useState(0.85);
+  const [bassVolume,   setBassVolState] = useState(1.0);
+  const [isRecording,  setRecording]    = useState(false);
+  const [loopStatus,   setLoopStatus]   = useState({ mode: 'off', bar: 0, bars: 4 });
 
   const engineRef    = useRef(null);
   const schedulerRef = useRef(null);
   const directorRef  = useRef(null);
   const styleRef     = useRef(style);
+  const drumVolRef   = useRef(0.85);
+  const bassVolRef   = useRef(1.0);
   useEffect(() => { styleRef.current = style; }, [style]);
+
+  const setDrumVolume = useCallback((v) => {
+    drumVolRef.current = v;
+    setDrumVolState(v);
+    engineRef.current?.setDrumVolume(v);
+  }, []);
+  const setBassVolume = useCallback((v) => {
+    bassVolRef.current = v;
+    setBassVolState(v);
+    engineRef.current?.setBassVolume(v);
+  }, []);
 
   function ensureEngine() {
     if (!engineRef.current) {
@@ -36,6 +54,11 @@ export function useJamEngine({ style = 'supportive', genre = 'blues' } = {}) {
         onEnergy:          setEnergy,
         onStatus:          setStatus,
         onListeningChange: setListening,
+        onChord: (label) => setChordHistory(prev =>
+          prev[prev.length - 1] === label ? prev : [...prev, label].slice(-8)
+        ),
+        onTiming: setTiming,
+        onRecordingChange: setRecording,
         onOnset: () => {
           setOnsetFlash(true);
           setTimeout(() => setOnsetFlash(false), 90);
@@ -54,6 +77,9 @@ export function useJamEngine({ style = 'supportive', genre = 'blues' } = {}) {
       setMicBlocked(true);
       return;
     }
+    // apply any volume the user set before this session started
+    engine.setDrumVolume(drumVolRef.current);
+    engine.setBassVolume(bassVolRef.current);
     if (!schedulerRef.current) {
       const sched = createScheduler(engine, createBrain({ genre }));
       schedulerRef.current = sched;
@@ -65,6 +91,7 @@ export function useJamEngine({ style = 'supportive', genre = 'blues' } = {}) {
       });
       directorRef.current = director;
       sched.setOnBar(director.onBar);
+      sched.setOnLoopStatus(setLoopStatus);
     }
     // count-in fires immediately so the user gets the pulse
     setCountIn(3);
@@ -88,13 +115,9 @@ export function useJamEngine({ style = 'supportive', genre = 'blues' } = {}) {
     setActiveBeat(-1);
     setChordHistory([]);
     setJamMode(null);
+    setTiming(null);
+    setLoopStatus({ mode: 'off', bar: 0, bars: 4 });
   }, []);
-
-  // append each new key detection to the chord history (last 8 kept)
-  useEffect(() => {
-    if (!musicKey) return;
-    setChordHistory(prev => [...prev, musicKey].slice(-8));
-  }, [musicKey]);
 
   // count-in ticker — when it finishes, mark bandReady but don't start the band yet
   useEffect(() => {
@@ -131,10 +154,22 @@ export function useJamEngine({ style = 'supportive', genre = 'blues' } = {}) {
     [listening, startMic, stopMic]
   );
 
+  const toggleRecording = useCallback(() => {
+    const engine = engineRef.current;
+    if (!engine) return; // recording needs an active session
+    if (engine.isRecording()) engine.stopRecording();
+    else engine.startRecording();
+  }, []);
+
+  const toggleLoop = useCallback(() => {
+    schedulerRef.current?.toggleLoop();
+  }, []);
+
   return {
     listening, bandPlaying, bandReady,
     bpm, musicKey, chordHistory, rms, energy, activeBeat, status, onsetFlash, micBlocked, countIn,
-    jamMode,
-    toggleMic,
+    jamMode, timing, isRecording, loopStatus,
+    drumVolume, bassVolume, setDrumVolume, setBassVolume,
+    toggleMic, toggleRecording, toggleLoop,
   };
 }

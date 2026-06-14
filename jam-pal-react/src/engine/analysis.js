@@ -2,6 +2,7 @@ import {
   GUITAR_LOW_HZ, GUITAR_HIGH_HZ,
   CHROMA_DECAY, KS_MAJOR, KS_MINOR, NOTE_NAMES, KEY_CONFIDENCE,
   TEMPO_WINDOW, ENERGY_LOW, ENERGY_HIGH,
+  CHORD_MIN_ENERGY, CHORD_CONFIDENCE, CHORD_THIRD_DEADZONE,
 } from './config.js';
 
 export function foldTempo(bpm, low = 55, high = 160) {
@@ -98,6 +99,44 @@ export function detectKey(chromaProfile, currentRoot, currentMode) {
 
   const bassRootFreq = 440 * Math.pow(2, (36 + best.root - 69) / 12);
   return { root: best.root, mode: best.mode, bassRootFreq, name: NOTE_NAMES[best.root] };
+}
+
+// Detects the chord the player is currently sounding from the chroma profile.
+// Forgiving by design: roots on the most prominent pitch class reinforced by
+// its fifth, picks maj/min only when one third clearly wins (else keeps the
+// previous quality), and returns null when nothing is confident enough so the
+// caller can simply hold the last chord.
+// Returns { rootPc, quality, confidence } or null.
+export function detectChord(chromaProfile, prevQuality = 'maj') {
+  const total = chromaProfile.reduce((a, b) => a + b, 0);
+  if (total < CHORD_MIN_ENERGY) return null;
+
+  const c = Array.from(chromaProfile, v => v / total);
+
+  // score each possible root by its own strength plus the strength of its
+  // fifth and best third — a perfect fifth is a strong root indicator
+  let best = { score: -Infinity, root: 0 };
+  for (let r = 0; r < 12; r++) {
+    const fifth = c[(r + 7) % 12];
+    const third = Math.max(c[(r + 4) % 12], c[(r + 3) % 12]);
+    const score = 1.5 * c[r] + 1.0 * fifth + 0.8 * third;
+    if (score > best.score) best = { score, root: r };
+  }
+
+  // confidence = how much of the total energy the triad explains
+  const r          = best.root;
+  const maj3       = c[(r + 4) % 12];
+  const min3       = c[(r + 3) % 12];
+  const confidence = c[r] + c[(r + 7) % 12] + Math.max(maj3, min3);
+  if (confidence < CHORD_CONFIDENCE) return null;
+
+  // major vs minor: only flip when one third clearly dominates, otherwise keep
+  // what we had — a missing or ambiguous third shouldn't make the band waver
+  let quality = prevQuality;
+  if (maj3 > min3 * CHORD_THIRD_DEADZONE)      quality = 'maj';
+  else if (min3 > maj3 * CHORD_THIRD_DEADZONE) quality = 'min';
+
+  return { rootPc: r, quality, confidence };
 }
 
 export function wobbleToFollowRate(wobble) {

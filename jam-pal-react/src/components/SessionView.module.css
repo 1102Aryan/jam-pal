@@ -73,7 +73,7 @@
   justify-content: center;
 }
 
-/* ── Ring ── */
+/*  Ring  */
 
 /* Wrapper — all layers sit inside here */
 .ringWrap {
@@ -135,7 +135,7 @@
   100% { box-shadow: 0 0 65px 12px rgba(0,212,255,0.30),   0 0 110px 22px rgba(155,111,255,0.16); }
 }
 
-/* Beat-flash layer — only this scales/brightens on each beat */
+/* Beat-flash layer */
 .ringBeat {
   position: absolute;
   inset: 0;
@@ -154,7 +154,7 @@
   animation: beatFlash 0.50s ease-out;
 }
 
-/* Content centred inside — never animated */
+/* Content centred*/
 .ringContent {
   position: absolute;
   inset: 0;
@@ -267,6 +267,70 @@
   letter-spacing: 0.01em;
 }
 
+/*  Timing feedback meter  */
+.timing {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 8px 24px 0;
+  flex-shrink: 0;
+  position: relative; 
+  width: 100%;
+}
+
+.timingEnd {
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.timingTrack {
+  position: relative;
+  width: 400px;
+  height: 8px;
+  border-radius: 999px;
+  background: var(--line);
+}
+
+.timingCenter {
+  position: absolute;
+  left: 50%;
+  top: -4px;
+  width: 3px;
+  height: 16px;
+  border-radius: 1px;
+  background: var(--muted);
+  transform: translateX(-50%);
+  opacity: 0.6;
+}
+
+.timingDot {
+  position: absolute;
+  top: 50%;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--beat);
+  transform: translate(-50%, -50%);
+  transition: left 140ms ease-out, background 200ms;
+  box-shadow: 0 0 8px rgba(239, 159, 39, 0.5);
+}
+
+.timingDotOk {
+  background: var(--accent);
+  box-shadow: 0 0 10px rgba(0, 212, 180, 0.6);
+}
+
+.timingStat {
+  font-size: 12px;
+  position: absolute;
+  left: calc(50% + 250px);
+  color: var(--muted);
+  letter-spacing: 0.01em;
+}
+
 /* Bottom Bar */
 .bottomBar {
   display: flex;
@@ -275,10 +339,19 @@
   height: 90px;
   flex-shrink: 0;
   gap: 16px;
+  position: relative;
+}
+
+.leftStack {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 10px;
+  overflow: hidden;
 }
 
 .chords {
-  flex: 1;
   display: flex;
   align-items: center;
   gap: 10px;
@@ -286,6 +359,74 @@
   color: var(--muted);
   white-space: nowrap;
   overflow: hidden;
+}
+
+/* Volume faders */
+.mixer {
+  display: flex;
+  gap: 18px;
+}
+
+.fader {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.faderLabel {
+  width: 38px;
+  flex-shrink: 0;
+}
+
+.faderIcon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.faderIcon svg {
+  width: 50px;
+  height: 50px;
+  display: block;
+}
+
+
+.faderIconDrums { color: var(--ring-a); }
+.faderIconBass  { color: var(--ring-b); }
+
+.fader input[type='range'] {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 90px;
+  height: 4px;
+  border-radius: 999px;
+  background: var(--line);
+  outline: none;
+  cursor: pointer;
+}
+
+.fader input[type='range']::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 13px;
+  height: 13px;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 6px rgba(0, 212, 180, 0.4);
+}
+
+.fader input[type='range']::-moz-range-thumb {
+  width: 13px;
+  height: 13px;
+  border: none;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 6px rgba(0, 212, 180, 0.4);
 }
 
 .chordsIcon {
@@ -333,6 +474,131 @@
 .playBtnActive {
   background: #c0365a;
   box-shadow: 0 0 22px rgba(192, 54, 90, 0.28);
+}
+
+/* record button — light blue, turns red while recording */
+.recordBtn {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  
+  border: 2px solid #5cc8ff;
+  cursor: pointer;
+  background: transparent;
+  color: #5cc8ff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  position: absolute;
+  left: calc(50% + 80px);
+  transition: color 150ms, border-color 150ms, background 150ms, opacity 150ms;
+}
+
+.recordBtn svg {
+  width: 20px;
+  height: 20px;
+  fill: currentColor;
+  display: block;
+}
+
+.recordBtn:hover:not(:disabled) {
+  background: rgba(92, 200, 255, 0.12);
+}
+
+.recordBtn:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.recordBtnActive {
+  color: #ff4d4d;
+  border-color: #ff4d4d;
+  animation: recordPulse 1.2s ease-in-out infinite;
+}
+
+.recordBtnActive:hover:not(:disabled) {
+  background: rgba(255, 77, 77, 0.12);
+}
+
+@keyframes recordPulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(255, 77, 77, 0.5); }
+  50%      { box-shadow: 0 0 0 6px rgba(255, 77, 77, 0); }
+}
+
+/* loop button */
+.loopBtn {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  border: 2px solid #5cc8ff; 
+  color: #5cc8ff;
+  cursor: pointer;
+  background: transparent;
+  /* color: var(--muted); */
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  transition: color 150ms, border-color 150ms, background 150ms, opacity 150ms;
+  position: absolute;
+  right: calc(50% + 80px);
+}
+
+.loopBtn svg {
+  width: 20px;
+  height: 20px;
+  display: block;
+  fill: currentColor;
+}
+
+
+.loopBtn:hover:not(:disabled) {
+  background: rgba(92, 200, 255, 0.12); 
+  color: #5cc8ff;                      
+}
+
+.loopBtn:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.loopCount {
+  font-size: 17px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+/* arming — waiting for the next downbeat */
+.loopBtn_arming {
+  color: #ef9f27;
+  border-color: #ef9f27;
+  animation: loopPulse 0.6s ease-in-out infinite;
+}
+
+/* recording — capturing the progression */
+.loopBtn_recording {
+  color: #ff4d4d;
+  border-color: #ff4d4d;
+  animation: loopPulse 0.6s ease-in-out infinite;
+}
+
+/* playing — progression locked and looping */
+.loopBtn_playing {
+  color: #04342c;
+  background: var(--accent);
+  border-color: var(--accent);
+  box-shadow: 0 0 14px rgba(0, 212, 180, 0.4);
+}
+
+.loopBtn_playing:hover:not(:disabled) {
+  background: var(--accent);
+  color: #04342c;
+}
+
+@keyframes loopPulse {
+  0%, 100% { box-shadow: 0 0 0 0 currentColor; opacity: 1; }
+  50%      { box-shadow: 0 0 0 5px transparent; opacity: 0.6; }
 }
 
 .rightControls {

@@ -5,7 +5,7 @@ import { LOOKAHEAD_MS, SCHEDULE_AHEAD } from './config.js';
 // styles, patterns, or musical decisions — that's all in bandBrain.js (and,
 // later, a transformer behind the same interface).
 
-// ---- renderers ----
+// renderers 
 
 function playSample(audioCtx, dest, buffer, time, gain) {
   if (!buffer) return false;
@@ -18,17 +18,17 @@ function playSample(audioCtx, dest, buffer, time, gain) {
   return true;
 }
 
-// ---- synth voices (fallback when samples aren't loaded) ----
+// synth audio (fallback when samples aren't loaded) 
 
 function playKick(audioCtx, dest, time, gain = 1) {
   const o = audioCtx.createOscillator();
   const g = audioCtx.createGain();
   o.frequency.setValueAtTime(150, time);
-  o.frequency.exponentialRampToValueAtTime(50, time + 0.12);
+  o.frequency.exponentialRampToValueAtTime(45, time + 0.16);
   g.gain.setValueAtTime(gain, time);
-  g.gain.exponentialRampToValueAtTime(0.001, time + 0.18);
+  g.gain.exponentialRampToValueAtTime(0.001, time + 0.42); // longer tail — more body
   o.connect(g).connect(dest);
-  o.start(time); o.stop(time + 0.2);
+  o.start(time); o.stop(time + 0.45);
 }
 
 function playSnare(audioCtx, dest, noiseBuffer, time, gain = 0.7) {
@@ -36,9 +36,9 @@ function playSnare(audioCtx, dest, noiseBuffer, time, gain = 0.7) {
   const hp = audioCtx.createBiquadFilter(); hp.type = 'highpass'; hp.frequency.value = 1500;
   const g  = audioCtx.createGain();
   g.gain.setValueAtTime(gain, time);
-  g.gain.exponentialRampToValueAtTime(0.01, time + 0.12);
+  g.gain.exponentialRampToValueAtTime(0.01, time + 0.22); // longer ring-out
   n.connect(hp).connect(g).connect(dest);
-  n.start(time); n.stop(time + 0.15);
+  n.start(time); n.stop(time + 0.25);
 }
 
 function playHat(audioCtx, dest, noiseBuffer, time, gain = 0.25, dur = 0.05) {
@@ -51,8 +51,7 @@ function playHat(audioCtx, dest, noiseBuffer, time, gain = 0.25, dur = 0.05) {
   n.start(time); n.stop(time + dur + 0.01);
 }
 
-// ---- bass ----
-
+//  bass 
 const A4 = 440;
 const midiToFreq = (m) => A4 * Math.pow(2, (m - 69) / 12);
 const freqToMidi = (f) => 69 + 12 * Math.log2(f / A4);
@@ -104,27 +103,23 @@ function playBassSample(audioCtx, dest, buffer, sampleMidi, targetFreq, ev, time
   src.start(time); src.stop(time + s + 0.03);
 }
 
-// Synth fallback: triangle body + sub sine + quiet saw, soft-saturated, with a
-// filter envelope and a short pluck transient. Sounds like a bass, not a buzz.
+// Synth fallback modelled on a bass DI + amp blend, in two parallel paths:
+//   LOW  path (clean): sine fundamental + sub-octave → gentle lowpass — the deep
+//                      foundation, never saturated so the bottom stays solid.
+//   HARM path (driven): triangle + saw → soft saturation → filter envelope —
+//                      adds the harmonics that read as "bass" on small speakers.
+// A long release lets each note ring into the next instead of clipping off.
 function playBassSynth(audioCtx, dest, noiseBuffer, targetFreq, ev, time) {
   const s   = ev.sustain;
-  const rel = Math.min(0.08, s * 0.3);
+  const rel = Math.min(0.18, s * 0.45); // generous release for a singing tail
 
-  const shaper = audioCtx.createWaveShaper();
-  shaper.curve = SAT_CURVE; shaper.oversample = '2x';
-
-  const lp = audioCtx.createBiquadFilter();
-  lp.type = 'lowpass';
-  lp.frequency.setValueAtTime(1600, time);
-  lp.frequency.exponentialRampToValueAtTime(420, time + Math.min(0.25, s));
-
+  // shared amplitude envelope: fast attack, gentle pluck decay, long release
   const env = audioCtx.createGain();
   env.gain.setValueAtTime(0.0001, time);
   env.gain.linearRampToValueAtTime(ev.gain, time + 0.012);
-  env.gain.exponentialRampToValueAtTime(ev.gain * 0.5, time + Math.max(0.05, s - rel));
-  env.gain.exponentialRampToValueAtTime(0.0008, time + s);
-
-  shaper.connect(lp).connect(env).connect(dest);
+  env.gain.exponentialRampToValueAtTime(ev.gain * 0.6, time + Math.max(0.06, s - rel));
+  env.gain.exponentialRampToValueAtTime(0.0006, time + s + rel);
+  env.connect(dest);
 
   const setFreq = (osc, f) => {
     if (ev.slide) {
@@ -135,17 +130,32 @@ function playBassSynth(audioCtx, dest, noiseBuffer, targetFreq, ev, time) {
     }
   };
 
-  const voices = [
-    ['triangle', targetFreq,     0.6 ],  // body
-    ['sine',     targetFreq / 2, 0.5 ],  // sub-octave reinforcement
-    ['sawtooth', targetFreq,     0.18],  // bite / definition
-  ];
-  for (const [type, f, level] of voices) {
+  // ---- LOW path: clean fundamental + sub ----
+  const lowLP = audioCtx.createBiquadFilter();
+  lowLP.type = 'lowpass'; lowLP.frequency.value = 320;
+  lowLP.connect(env);
+  for (const [f, level] of [[targetFreq, 0.85], [targetFreq / 2, 0.55]]) {
     const o = audioCtx.createOscillator();
     const g = audioCtx.createGain();
-    o.type = type; setFreq(o, f); g.gain.value = level;
+    o.type = 'sine'; setFreq(o, f); g.gain.value = level;
+    o.connect(g).connect(lowLP);
+    o.start(time); o.stop(time + s + rel + 0.05);
+  }
+
+  //  HARM path: saturated harmonics with a bright to dark filter sweep 
+  const shaper = audioCtx.createWaveShaper();
+  shaper.curve = SAT_CURVE; shaper.oversample = '2x';
+  const harmLP = audioCtx.createBiquadFilter();
+  harmLP.type = 'lowpass';
+  harmLP.frequency.setValueAtTime(1700, time);
+  harmLP.frequency.exponentialRampToValueAtTime(450, time + Math.min(0.3, s));
+  shaper.connect(harmLP).connect(env);
+  for (const [type, level] of [['triangle', 0.5], ['sawtooth', 0.16]]) {
+    const o = audioCtx.createOscillator();
+    const g = audioCtx.createGain();
+    o.type = type; setFreq(o, targetFreq); g.gain.value = level;
     o.connect(g).connect(shaper);
-    o.start(time); o.stop(time + s + 0.05);
+    o.start(time); o.stop(time + s + rel + 0.05);
   }
 
   // finger-on-string pluck transient
@@ -153,14 +163,14 @@ function playBassSynth(audioCtx, dest, noiseBuffer, targetFreq, ev, time) {
     const n  = audioCtx.createBufferSource(); n.buffer = noiseBuffer;
     const bp = audioCtx.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = 1800; bp.Q.value = 0.8;
     const ng = audioCtx.createGain();
-    ng.gain.setValueAtTime(ev.gain * 0.25, time);
+    ng.gain.setValueAtTime(ev.gain * 0.22, time);
     ng.gain.exponentialRampToValueAtTime(0.0005, time + 0.03);
     n.connect(bp).connect(ng).connect(dest);
     n.start(time); n.stop(time + 0.04);
   }
 }
 
-// ---- scheduler factory ----
+// scheduler factory 
 // engine = object returned by createAudioEngine
 // brain  = object implementing the bandBrain interface (see bandBrain.js)
 export function createScheduler(engine, brain) {
@@ -176,38 +186,107 @@ export function createScheduler(engine, brain) {
   let onBarCb        = null;
   let muteMask       = { kick: false, snare: false, hat: false, bass: false };
 
+  // looper: capture LOOP_BARS bars of the player's chords, then loop them
+  const LOOP_BARS   = 4;
+  let loopMode      = 'off';   // 'off' | 'arming' | 'recording' | 'playing'
+  let loopChords    = [];      // captured { rootPc, quality } per bar
+  let loopRecStart  = 0;
+  let loopPlayStart = 0;
+  let loopStatusCb  = null;
+
+  const reportLoop = (bar = 0) => loopStatusCb?.({ mode: loopMode, bar, bars: LOOP_BARS });
+
+  // advances the loop state machine once per bar (called at each downbeat)
+  function handleLoopBar(bar) {
+    if (loopMode === 'arming') {           // wait hit — start capturing this bar
+      loopMode = 'recording';
+      loopChords = [];
+      loopRecStart = bar;
+      reportLoop(1);
+      return;
+    }
+    if (loopMode === 'recording') {
+      // grab the chord from the bar that just finished
+      loopChords.push(engine.getChord() ?? loopChords[loopChords.length - 1] ?? { rootPc: 0, quality: 'maj' });
+      if (bar - loopRecStart >= LOOP_BARS) {
+        loopMode = 'playing';              // captured them all — lock in and loop
+        loopPlayStart = bar;
+        engine.lockChord(true);
+      } else {
+        reportLoop(bar - loopRecStart + 1);
+        return;
+      }
+    }
+    if (loopMode === 'playing') {
+      const idx = ((bar - loopPlayStart) % LOOP_BARS + LOOP_BARS) % LOOP_BARS;
+      const c = loopChords[idx];
+      if (c) engine.setChord(c.rootPc, c.quality);
+      reportLoop(idx + 1);
+    }
+  }
+
   // which mute-mask channel each drum belongs to
   const MUTE_KEY = { kick: 'kick', snare: 'snare', hat: 'hat', openhat: 'hat', crash: 'hat' };
+
+  // round-robin cursor per drum-layer, so repeated hits cycle through takes
+  const rrCursor = {};
+
+  // pick a buffer for `name` at velocity `gain`: choose the velocity layer from
+  // how hard the hit is, then advance that layer's round-robin to the next take
+  function pickDrumBuffer(drumKit, name, gain) {
+    const layers = drumKit?.[name];
+    if (!layers || !layers.length) return null;
+    const li    = Math.min(layers.length - 1, Math.floor(Math.min(gain, 0.999) * layers.length));
+    const takes = layers[li];
+    if (!takes.length) return null;
+    const key  = `${name}:${li}`;
+    const next = ((rrCursor[key] ?? -1) + 1) % takes.length;
+    rrCursor[key] = next;
+    return takes[next];
+  }
+
+  // try each name in order (for fallback chains like crash → openhat → hihat)
+  function pickFirst(drumKit, names, gain) {
+    for (const n of names) {
+      const b = pickDrumBuffer(drumKit, n, gain);
+      if (b) return b;
+    }
+    return null;
+  }
 
   function renderEvent(ev, time) {
     const audioCtx = engine.getAudioCtx();
     if (!audioCtx) return;
-    const dest = engine.getBandBus() ?? audioCtx.destination;
-    const t    = Math.max(time + (ev.dt || 0), audioCtx.currentTime);
+    const fallback = audioCtx.destination;
+    const t        = Math.max(time + (ev.dt || 0), audioCtx.currentTime);
 
     if (ev.kind === 'drum') {
       if (muteMask[MUTE_KEY[ev.drum]]) return;
-      const smp         = engine.getSamples();
+      const dest        = engine.getDrumBus() ?? engine.getBandBus() ?? fallback;
+      const drumKit     = engine.getSamples().drums;
       const noiseBuffer = engine.getNoiseBuffer();
+      // tell the engine when this hit will reach the mic, so it can reject it
+      engine.registerBandHit(t + engine.getOutputLatency());
       switch (ev.drum) {
         case 'kick':
-          if (!playSample(audioCtx, dest, smp.kick, t, ev.gain)) playKick(audioCtx, dest, t, ev.gain);
+          if (!playSample(audioCtx, dest, pickDrumBuffer(drumKit, 'kick', ev.gain), t, ev.gain)) playKick(audioCtx, dest, t, ev.gain);
           break;
         case 'snare':
-          if (!playSample(audioCtx, dest, smp.snare, t, ev.gain)) playSnare(audioCtx, dest, noiseBuffer, t, ev.gain);
+          if (!playSample(audioCtx, dest, pickDrumBuffer(drumKit, 'snare', ev.gain), t, ev.gain)) playSnare(audioCtx, dest, noiseBuffer, t, ev.gain);
           break;
         case 'hat':
-          if (!playSample(audioCtx, dest, smp.hihat, t, ev.gain)) playHat(audioCtx, dest, noiseBuffer, t, ev.gain);
+          if (!playSample(audioCtx, dest, pickDrumBuffer(drumKit, 'hihat', ev.gain), t, ev.gain)) playHat(audioCtx, dest, noiseBuffer, t, ev.gain);
           break;
         case 'openhat':
-          if (!playSample(audioCtx, dest, smp.openhat ?? smp.hihat, t, ev.gain)) playHat(audioCtx, dest, noiseBuffer, t, ev.gain * 1.3, 0.12);
+          if (!playSample(audioCtx, dest, pickFirst(drumKit, ['openhat', 'hihat'], ev.gain), t, ev.gain)) playHat(audioCtx, dest, noiseBuffer, t, ev.gain * 1.3, 0.12);
           break;
         case 'crash':
-          if (!playSample(audioCtx, dest, smp.crash ?? smp.openhat ?? smp.hihat, t, ev.gain)) playHat(audioCtx, dest, noiseBuffer, t, ev.gain * 1.4, 0.35);
+          if (!playSample(audioCtx, dest, pickFirst(drumKit, ['crash', 'openhat', 'hihat'], ev.gain), t, ev.gain)) playHat(audioCtx, dest, noiseBuffer, t, ev.gain * 1.4, 0.35);
           break;
       }
     } else if (ev.kind === 'bass') {
       if (muteMask.bass) return;
+      const dest       = engine.getBassBus() ?? engine.getBandBus() ?? fallback;
       const targetFreq = engine.getBassRootFreq() * Math.pow(2, ev.semi / 12);
       const bass = engine.getSamples().bass;
       if (bass && Object.keys(bass).length) {
@@ -220,7 +299,14 @@ export function createScheduler(engine, brain) {
   }
 
   function scheduleStep(step, time) {
-    if (step === 0) onBarCb?.(barCount++);
+    if (step === 0) {
+      const bar = barCount++;
+      onBarCb?.(bar);
+      handleLoopBar(bar);
+    }
+
+    // tell the engine when the player will hear each quarter beat (timing feedback)
+    if (step % 4 === 0) engine.registerBeat(time + engine.getOutputLatency());
 
     const beatSec = 60 / engine.getSmoothedBPM();
     const events  = brain.step({
@@ -228,6 +314,7 @@ export function createScheduler(engine, brain) {
       barIdx: barCount - 1,
       energy: engine.getEnergyLevel(),
       beatSec,
+      chordQuality: engine.getChordQuality(),
       playerOnsets: engine.getRecentOnsetCount(beatSec * 4),
     });
     for (const ev of events) renderEvent(ev, time);
@@ -256,7 +343,8 @@ export function createScheduler(engine, brain) {
   function drawBeats() {
     const audioCtx = engine.getAudioCtx();
     if (audioCtx && playing) {
-      const now = audioCtx.currentTime;
+      // light a beat when its audio is actually heard, not when it's scheduled
+      const now = audioCtx.currentTime - engine.getOutputLatency();
       let step = -1;
       while (noteQueue.length && noteQueue[0].time <= now) {
         step = noteQueue[0].step;
@@ -282,6 +370,8 @@ export function createScheduler(engine, brain) {
       engine.setBandPlaying(true);
       current16th      = 0;
       barCount         = 0;
+      loopMode         = 'off';
+      loopChords       = [];
       brain.reset();
       noteQueue.length = 0;
       lastQuarterLit   = -1;
@@ -307,9 +397,25 @@ export function createScheduler(engine, brain) {
       clearTimeout(schedulerTimer);
       if (beatRafId) { cancelAnimationFrame(beatRafId); beatRafId = null; }
       beatChangeCb?.(null);
+      loopMode = 'off';
+      loopChords = [];
+      reportLoop();
     },
 
     setMuteMask(m) { Object.assign(muteMask, m); },
     setOnBar(cb)   { onBarCb = cb; },
+    setOnLoopStatus(cb) { loopStatusCb = cb; },
+
+    // arm the looper if idle, otherwise clear it (back to live chord following)
+    toggleLoop() {
+      if (loopMode === 'off') {
+        if (playing) { loopMode = 'arming'; reportLoop(); }
+      } else {
+        loopMode = 'off';
+        loopChords = [];
+        engine.lockChord(false);
+        reportLoop();
+      }
+    },
   };
 }

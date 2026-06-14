@@ -14,12 +14,36 @@ export const TEMPO_WINDOW = 5;        // gaps between last N onsets
 export const LOOKAHEAD_MS    = 25;
 export const SCHEDULE_AHEAD  = 0.1;   // seconds
 
+// Latency & feedback rejection
+// The band's sound leaves the speakers ~outputLatency after it's scheduled,
+// reaches the mic, and shows up in the analysis ~inputLatency later. We know
+// when every band hit will be heard, so we ignore mic onsets/chroma in a window
+// around it — that stops the band's own drums from being mistaken for the
+// player and corrupting BPM/key detection.
+export const DEFAULT_OUTPUT_LATENCY = 0.02;  // fallback if the browser won't report it
+export const INPUT_LATENCY_EST      = 0.02;  // estimated mic → analysis delay
+export const FEEDBACK_GUARD         = 0.05;  // ± window (s) around a band hit to suppress
+export const BAND_HIT_TTL           = 0.5;   // forget registered band hits older than this
+
 // Key detection (Krumhansl-Schmuckler)
 export const CHROMA_DECAY    = 0.997;
 export const KEY_CONFIDENCE  = 0.65;
+
+// Chord detection (forgiving, beginner-friendly)
+export const CHORD_MIN_ENERGY  = 1.0;   // ignore near-silent chroma
+export const CHORD_CONFIDENCE  = 0.34;  // share of energy the chord must explain
+export const CHORD_THIRD_DEADZONE = 1.4; // maj/min only flips when one third clearly wins
+export const CHORD_HOLD_SEC    = 0.45;  // a new chord must persist this long before we switch
 export const KS_MAJOR = [6.35, 2.23, 3.48, 2.33, 4.38, 4.09, 2.52, 5.19, 2.39, 3.66, 2.29, 2.88];
 export const KS_MINOR = [6.33, 2.68, 3.52, 5.38, 2.60, 3.53, 2.54, 4.75, 3.98, 2.69, 3.34, 3.17];
 export const NOTE_NAMES = ['C', 'C♯', 'D', 'D♯', 'E', 'F', 'F♯', 'G', 'G♯', 'A', 'A♯', 'B'];
+
+// Timing feedback (pedagogy): compares the player's onsets to the band's beat
+// grid. Most accurate on headphones — see measureTiming in audioEngine.js.
+export const TIMING_REFRACTORY = 0.12;  // min seconds between measured onsets
+export const TIMING_WINDOW     = 12;    // onsets averaged for the rush/drag read
+export const TIMING_TIGHT_SEC  = 0.05;  // within ±50 ms counts as "in the pocket"
+export const TIMING_ONBEAT_FRAC = 0.3;  // only onsets within ±0.3 beat are graded
 
 // Energy / dynamics
 export const ENERGY_ATTACK  = 0.06;
@@ -27,12 +51,7 @@ export const ENERGY_RELEASE = 0.008;
 export const ENERGY_LOW     = 0.003;
 export const ENERGY_HIGH    = 0.030;
 
-// Drum patterns (one bar = 16 sixteenths)
-export const KICK_PATTERN  = [1, 0, 0, 0, 0, 0, 1, 0, 1, 0, 0, 0, 0, 0, 1, 0];
-export const SNARE_PATTERN = [0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0];
-export const BASS_PATTERN  = [0, null, null, null, 0, null, null, null, 7, null, null, null, 5, null, null, null];
-
-// ---- Blues preset ----
+// ---- Blues preset (see genres.js for how styles are assembled) ----
 // Shuffle timing lives in the brain's session personality (see bandBrain.js):
 // the 4 sixteenth slots of each beat land at 0, s/2, s, s+(1-s)/2 where
 // s ≈ 2/3 is the shuffle position — slot 2 is THE shuffle note, slot 3 the
@@ -62,27 +81,6 @@ export const BLUES_HAT_POOL = [
     [1,0,1,0, 1,0,1,0, 1,0,1,0, 1,0,2,0] ],                // 2: open hat on beat 4's shuffle note
 ];
 
-// 12-bar blues: 0=I, 1=IV, 2=V  (quick-change form, turnaround on bar 12)
-export const BLUES_TWELVE_BAR = [0, 0, 0, 0, 1, 1, 0, 0, 2, 1, 0, 2];
-export const CHORD_ROOTS      = [0, 5, 7]; // I, IV, V in semitones from the key root
-
-// Walking bass patterns per chord degree (semitones from the detected key root).
-// Quarter-note walk (slots 0, 4, 8, 12) plus a swung pickup on slot 2.
-//
-// I  chord: C – G(swung) – E – G – F          outlines C maj-add6, walks to IV
-// IV chord: F – C3(swung) – A – C3 – Bb       outlines F7, walks to I
-// V  chord: G – D3(swung) – B – D3 – F        outlines G7, F resolves back to I
-export const BLUES_BASS_PATTERNS = [
-  [0,  null, 7,  null, 4,  null, null, null, 7,  null, null, null, 5,  null, null, null], // I
-  [5,  null, 12, null, 9,  null, null, null, 12, null, null, null, 10, null, null, null], // IV
-  [7,  null, 14, null, 11, null, null, null, 14, null, null, null, 5,  null, null, null], // V
-];
-
-// Bar 12 turnaround: quarter-note chromatic walk V → I (G A B♭ B → C),
-// landing on the root at the top of the next chorus.
-export const BLUES_TURNAROUND_BASS =
-  [7, null, null, null, 9, null, null, null, 10, null, null, null, 11, null, null, null];
-
 // Dynamic arc over the 12-bar form (gain multiplier per bar) — the V–IV bars
 // (9–10) are the tension peak, bar 12 pushes into the turnaround.
 export const BLUES_BAR_DYNAMICS =
@@ -93,6 +91,25 @@ export const BLUES_BAR_DYNAMICS =
 // to ≤±2 semitones. For pristine quality record the full chromatic range and
 // use: Array.from({ length: 25 }, (_, i) => 36 + i)  // C2..C4
 export const BASS_SAMPLE_MIDI = [36, 40, 44, 48, 52, 56, 60];
+
+// Drum kit manifest. Each drum maps to an array of velocity LAYERS ordered
+// soft → loud; each layer is an array of round-robin TAKES (filenames in
+// /samples/). The engine picks a layer from how hard the hit is, then cycles
+// through that layer's takes so consecutive hits aren't bit-identical.
+//
+// Record as many or as few as you like — a single file per drum still works.
+//   one file:                kick:  [['kick.wav']]
+//   3 velocity layers:       kick:  [['kick-soft.wav'], ['kick-mid.wav'], ['kick-hard.wav']]
+//   velocity + round-robin:  snare: [['snare-soft-1.wav','snare-soft-2.wav'],
+//                                    ['snare-hard-1.wav','snare-hard-2.wav']]
+// Only list files you actually have, so nothing 404s.
+export const DRUM_KIT = {
+  kick:    [['kick.wav']],
+  snare:   [['snare.wav']],
+  hihat:   [['hihat.wav']],
+  openhat: [['openhat.wav']],
+  crash:   [['crash.wav']],
+};
 
 // ---- Performance / humanization ----
 export const HUMAN_TIME_JITTER = 0.004;  // ±4 ms on everything except downbeats
