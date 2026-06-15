@@ -50,11 +50,13 @@ View the website through this [link](https://1102aryan.github.io/jam-pal/).
 
 ## Demo 
 
-Available soon!
+<div align="center">
+  <img src="./images/screenshots/jam_pal_demo.gif" alt="App Demo" width="800"/>
+</div>
 
 ## Current Features
 Here are the features implemented:
-- Blues genre style drum and bass beat developed (other genres will be developed soon).
+- Option between Blues, Pop, Rock, Shoegaze to pick from.
 - Breakdowns - drops to one instrument so the player learns to listen and finds when to re-enter.
 - Solo space - the band mutes and allows you to lead/solo.
 - Call and response - the band plays a phrase, leaves a gap for you to answer.
@@ -64,12 +66,12 @@ Here are the features implemented:
 ## Status 
 The current application is a work in progress and will include these specific features:
 
-- Genre selection (pop, rock, shoegaze, etc.)
+- Include more genres (funk, etc)
 - Style selection (controls how the tool behaves - support, lead, etc.)
+- Anticipation focused model
 - Specific animations
 - AI analysis 
 - Time signature modifications
-- Adaptive workflow
 
 ## Contributing
 
