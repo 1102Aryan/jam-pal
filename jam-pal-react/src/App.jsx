@@ -1,21 +1,28 @@
 import { useState } from 'react';
 import SetupScreen from './components/SetupScreen';
 import SessionView from './components/SessionView';
+import ReportView from './components/ReportView';
 import { useJamEngine } from './hooks/useJamEngine';
 import './App.css';
 
 function App() {
-  const [inSession, setInSession] = useState(false);
+  const [view, setView] = useState('setup'); // 'setup' | 'session' | 'report'
   const [genre, setGenre] = useState('blues');
   const [style, setStyle] = useState('supportive');
   const [timeSig, setTimeSig] = useState('4/4');
 
   const engine = useJamEngine({ style, genre });
 
-  if (!inSession) {
+  // end the jam (stopping the band if it's running) and show the report
+  const endSession = () => {
+    if (engine.listening) engine.toggleMic();
+    setView('report');
+  };
+
+  if (view === 'setup') {
     return (
       <SetupScreen
-        onStart={() => setInSession(true)}
+        onStart={() => setView('session')}
         genre={genre}
         style={style}
         timeSig={timeSig}
@@ -24,6 +31,10 @@ function App() {
         onTimeSigChange={setTimeSig}
       />
     );
+  }
+
+  if (view === 'report') {
+    return <ReportView report={engine.sessionReport} onDone={() => setView('setup')} />;
   }
 
   return (
@@ -42,6 +53,7 @@ function App() {
       chordHistory={engine.chordHistory}
       onToggleMic={engine.toggleMic}
       onToggleBand={engine.toggleBand}
+      onEndSession={endSession}
       isRecording={engine.isRecording}
       onToggleRecording={engine.toggleRecording}
       loopStatus={engine.loopStatus}

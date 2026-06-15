@@ -12,6 +12,50 @@ import {
 
 const pcToBassFreq = (pc) => 440 * Math.pow(2, (36 + pc - 69) / 12); // C2..B2
 
+// Flatten an array of Float32 chunks into one contiguous buffer.
+function concatFloat32(chunks) {
+  let total = 0;
+  for (const c of chunks) total += c.length;
+  const out = new Float32Array(total);
+  let off = 0;
+  for (const c of chunks) { out.set(c, off); off += c.length; }
+  return out;
+}
+
+// Encode interleaved 16-bit PCM channels into a WAV Blob (no dependencies).
+// Plays everywhere — QuickTime, VLC, DAWs, phones — and is lossless.
+function encodeWav(channels, sampleRate) {
+  const numCh = channels.length;
+  const len   = channels[0].length;
+  const buffer = new ArrayBuffer(44 + len * numCh * 2);
+  const view   = new DataView(buffer);
+  const writeStr = (off, s) => { for (let i = 0; i < s.length; i++) view.setUint8(off + i, s.charCodeAt(i)); };
+
+  writeStr(0, 'RIFF');
+  view.setUint32(4, 36 + len * numCh * 2, true);
+  writeStr(8, 'WAVE');
+  writeStr(12, 'fmt ');
+  view.setUint32(16, 16, true);            // fmt chunk size
+  view.setUint16(20, 1, true);             // PCM
+  view.setUint16(22, numCh, true);
+  view.setUint32(24, sampleRate, true);
+  view.setUint32(28, sampleRate * numCh * 2, true); // byte rate
+  view.setUint16(32, numCh * 2, true);     // block align
+  view.setUint16(34, 16, true);            // bits per sample
+  writeStr(36, 'data');
+  view.setUint32(40, len * numCh * 2, true);
+
+  let off = 44;
+  for (let i = 0; i < len; i++) {
+    for (let ch = 0; ch < numCh; ch++) {
+      const s = Math.max(-1, Math.min(1, channels[ch][i]));
+      view.setInt16(off, s < 0 ? s * 0x8000 : s * 0x7fff, true);
+      off += 2;
+    }
+  }
+  return new Blob([view], { type: 'audio/wav' });
+}
+
 // Exponentially decaying noise burst — a cheap, convincing room impulse
 // response for the band's reverb send.
 function makeRoomImpulse(ctx, seconds, decay) {
@@ -70,9 +114,10 @@ export function createAudioEngine(callbacks = {}) {
   let bassBus          = null;
   let drumVolume       = 0.85;
   let bassVolume       = 1.0;
-  let recordDest       = null;
-  let mediaRecorder    = null;
+  let recorderNode     = null;  // taps band + mic, accumulates PCM while recording
   let recording        = false;
+  let recLeft          = [];    // Float32 chunks per channel
+  let recRight         = [];
   const samples        = {};
   const bandHits       = [];   // audible times of recent/upcoming band hits
   const beatTimes      = [];   // times the player *hears* each quarter beat
@@ -162,36 +207,34 @@ export function createAudioEngine(callbacks = {}) {
     isRecording: () => recording,
 
     startRecording() {
-      if (!audioCtx || !recordDest || recording) return false;
-      const mime = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
-        ? 'audio/webm;codecs=opus' : 'audio/webm';
-      const chunks = [];
-      mediaRecorder = new MediaRecorder(recordDest.stream, { mimeType: mime });
-      mediaRecorder.ondataavailable = (e) => { if (e.data.size) chunks.push(e.data); };
-      mediaRecorder.onstop = () => {
-        const blob = new Blob(chunks, { type: mime });
-        const url  = URL.createObjectURL(blob);
-        const a    = document.createElement('a');
-        a.href = url;
-        a.download = `jam-pal-${new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-')}.webm`;
-        document.body.appendChild(a);
-        a.click();
-        a.remove();
-        setTimeout(() => URL.revokeObjectURL(url), 10000);
-      };
-      mediaRecorder.start();
+      if (!audioCtx || !recorderNode || recording) return false;
+      recLeft = [];
+      recRight = [];
       recording = true;
       callbacks.onRecordingChange?.(true);
       return true;
     },
 
     stopRecording() {
-      if (mediaRecorder && recording) {
-        try { mediaRecorder.stop(); } catch { /* already stopped */ }
-      }
+      if (!recording) return;
       recording = false;
-      mediaRecorder = null;
       callbacks.onRecordingChange?.(false);
+
+      if (recLeft.length) {
+        const left  = concatFloat32(recLeft);
+        const right = concatFloat32(recRight);
+        const blob  = encodeWav([left, right], audioCtx.sampleRate);
+        const url   = URL.createObjectURL(blob);
+        const a     = document.createElement('a');
+        a.href = url;
+        a.download = `jam-pal-${new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-')}.wav`;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        setTimeout(() => URL.revokeObjectURL(url), 10000);
+      }
+      recLeft = [];
+      recRight = [];
     },
 
     // seconds between a scheduled sample and it actually leaving the speakers
@@ -303,11 +346,19 @@ export function createAudioEngine(callbacks = {}) {
       analyser.smoothingTimeConstant = 0.3;
       source.connect(analyser);
 
-      // recording tap: the band master (dry + reverb) plus the player's mic
-      recordDest = audioCtx.createMediaStreamDestination();
-      comp.connect(recordDest);
-      verb.connect(recordDest);
-      source.connect(recordDest);
+      // recording tap: sum the band master (dry + reverb) and the mic into a
+      // script processor that accumulates raw PCM while recording (→ WAV)
+      recorderNode = audioCtx.createScriptProcessor(4096, 2, 2);
+      recorderNode.onaudioprocess = (e) => {
+        if (!recording) return;
+        const ib = e.inputBuffer;
+        recLeft.push(ib.getChannelData(0).slice());
+        recRight.push(ib.getChannelData(ib.numberOfChannels > 1 ? 1 : 0).slice());
+      };
+      comp.connect(recorderNode);
+      verb.connect(recorderNode);
+      source.connect(recorderNode);
+      recorderNode.connect(audioCtx.destination); // must be connected to run; outputs silence
 
       timeBuf = new Float32Array(analyser.fftSize);
       fluxState.freqBuf = new Float32Array(analyser.frequencyBinCount);
@@ -334,17 +385,18 @@ export function createAudioEngine(callbacks = {}) {
 
     stop() {
       listening = false;
-      // finalise any in-progress recording so it still downloads
-      if (mediaRecorder && recording) {
-        try { mediaRecorder.stop(); } catch { /* already stopped */ }
+      // finalise any in-progress recording so it still downloads (before the
+      // context closes — encoding needs audioCtx.sampleRate)
+      api.stopRecording();
+      if (recorderNode) {
+        recorderNode.onaudioprocess = null;
+        try { recorderNode.disconnect(); } catch { /* not connected */ }
       }
-      recording = false; mediaRecorder = null;
-      callbacks.onRecordingChange?.(false);
       if (rafId) { cancelAnimationFrame(rafId); rafId = null; }
       if (micStream) micStream.getTracks().forEach(t => t.stop());
       if (audioCtx)  audioCtx.close();
       Object.keys(samples).forEach(k => delete samples[k]);
-      audioCtx = analyser = micStream = noiseBuffer = bandBus = drumBus = bassBus = recordDest = null;
+      audioCtx = analyser = micStream = noiseBuffer = bandBus = drumBus = bassBus = recorderNode = null;
       callbacks.onListeningChange?.(false);
       callbacks.onStatus?.('Stopped.');
       callbacks.onRms?.(0);

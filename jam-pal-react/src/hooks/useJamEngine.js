@@ -3,6 +3,7 @@ import { createAudioEngine } from '../engine/audioEngine.js';
 import { createScheduler } from '../engine/scheduler.js';
 import { createBrain } from '../engine/bandBrain.js';
 import { createJamDirector } from '../engine/jamDirector.js';
+import { createSessionStats } from '../engine/sessionStats.js';
 
 export function useJamEngine({ style = 'supportive', genre = 'blues' } = {}) {
   const [listening,    setListening]    = useState(false);
@@ -25,10 +26,12 @@ export function useJamEngine({ style = 'supportive', genre = 'blues' } = {}) {
   const [bassVolume,   setBassVolState] = useState(1.0);
   const [isRecording,  setRecording]    = useState(false);
   const [loopStatus,   setLoopStatus]   = useState({ mode: 'off', bar: 0, bars: 4 });
+  const [sessionReport, setSessionReport] = useState(null);
 
   const engineRef    = useRef(null);
   const schedulerRef = useRef(null);
   const directorRef  = useRef(null);
+  const statsRef     = useRef(null);
   const styleRef     = useRef(style);
   const drumVolRef   = useRef(0.85);
   const bassVolRef   = useRef(1.0);
@@ -49,15 +52,16 @@ export function useJamEngine({ style = 'supportive', genre = 'blues' } = {}) {
     if (!engineRef.current) {
       engineRef.current = createAudioEngine({
         onRms:             setRms,
-        onBpm:             setBpm,
+        onBpm: (bpm) => { setBpm(bpm); statsRef.current?.addBpm(bpm); },
         onKey:             setMusicKey,
-        onEnergy:          setEnergy,
+        onEnergy: (e) => { setEnergy(e); statsRef.current?.addEnergy(e); },
         onStatus:          setStatus,
         onListeningChange: setListening,
-        onChord: (label) => setChordHistory(prev =>
-          prev[prev.length - 1] === label ? prev : [...prev, label].slice(-8)
-        ),
-        onTiming: setTiming,
+        onChord: (label) => {
+          setChordHistory(prev => prev[prev.length - 1] === label ? prev : [...prev, label].slice(-8));
+          statsRef.current?.addChord(label);
+        },
+        onTiming: (t) => { setTiming(t); statsRef.current?.addTiming(t.offsetMs); },
         onRecordingChange: setRecording,
         onOnset: () => {
           setOnsetFlash(true);
@@ -70,6 +74,8 @@ export function useJamEngine({ style = 'supportive', genre = 'blues' } = {}) {
 
   const startMic = useCallback(async () => {
     setMicBlocked(false);
+    setSessionReport(null);
+    statsRef.current = createSessionStats();
     const engine = ensureEngine();
     const ok = await engine.start();
     if (!ok) {
@@ -109,6 +115,13 @@ export function useJamEngine({ style = 'supportive', genre = 'blues' } = {}) {
     const engine = engineRef.current;
     engineRef.current = null;
     setListening(false);
+
+    // produce the session report from everything collected this jam
+    const report = statsRef.current?.summarize() ?? null;
+    statsRef.current = null;
+    setSessionReport(report);
+    if (report) console.log('[JamPal] Session report', report);
+
     // keep the AudioContext alive long enough for the ending hit to ring out
     setTimeout(() => engine?.stop(), 800);
     setBandPlaying(false);
@@ -168,7 +181,7 @@ export function useJamEngine({ style = 'supportive', genre = 'blues' } = {}) {
   return {
     listening, bandPlaying, bandReady,
     bpm, musicKey, chordHistory, rms, energy, activeBeat, status, onsetFlash, micBlocked, countIn,
-    jamMode, timing, isRecording, loopStatus,
+    jamMode, timing, isRecording, loopStatus, sessionReport,
     drumVolume, bassVolume, setDrumVolume, setBassVolume,
     toggleMic, toggleRecording, toggleLoop,
   };

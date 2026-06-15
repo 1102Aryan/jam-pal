@@ -231,26 +231,36 @@
   box-shadow: 0 0 8px var(--accent);
 }
 
-/* Jam mode banner */
-@keyframes modeIn {
-  from { opacity: 0; transform: scale(0.88); }
-  to   { opacity: 1; transform: scale(1); }
+/* Jam mode — big centred announcement that pops in like the count-in */
+.modeOverlay {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+  z-index: 45;
 }
 
-.modeBanner {
-  padding: 5px 16px;
-  border-radius: 999px;
-  border: 1px solid var(--line);
-  font-size: 13px;
-  font-weight: 500;
-  letter-spacing: 0.04em;
-  animation: modeIn 280ms cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+@keyframes modePop {
+  0%   { opacity: 0; transform: scale(1.5); }
+  100% { opacity: 1; transform: scale(1); }
 }
 
-.modeBanner_breakdown { border-color: #f59e0b; color: #f59e0b; background: rgba(245,158,11,0.08); }
-.modeBanner_solo      { border-color: var(--accent); color: var(--accent); background: rgba(0,212,180,0.10); }
-.modeBanner_call      { border-color: #818cf8; color: #818cf8; background: rgba(129,140,248,0.08); }
-.modeBanner_response  { border-color: #f472b6; color: #f472b6; background: rgba(244,114,182,0.08); }
+.modeLabel {
+  font-size: 64px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  line-height: 1;
+  text-align: center;
+  text-shadow: 0 0 30px currentColor;
+  animation: modePop 460ms cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+}
+
+.modeLabel_breakdown { color: #f59e0b; }
+.modeLabel_solo      { color: var(--accent); }
+.modeLabel_call      { color: #818cf8; }
+.modeLabel_response  { color: #f472b6; }
 
 /* Genre / style chips */
 .chips {
@@ -476,6 +486,37 @@
   box-shadow: 0 0 22px rgba(192, 54, 90, 0.28);
 }
 
+/* end button — music-player "stop" square, sends you to the report */
+.endBtn {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  border: 1.5px solid var(--line);
+  cursor: pointer;
+  background: transparent;
+  color: var(--muted);
+  display: flex;
+  position: absolute;
+  align-items: center;
+  justify-content: center;
+  left: calc(50% + 80px);
+  flex-shrink: 0;
+  transition: color 150ms, border-color 150ms, background 150ms;
+}
+
+.endBtn svg {
+  width: 18px;
+  height: 18px;
+  fill: currentColor;
+  display: block;
+}
+
+.endBtn:hover {
+  color: #e0563f;
+  border-color: #e0563f;
+  background: rgba(224, 86, 63, 0.10);
+}
+
 /* record button — light blue, turns red while recording */
 .recordBtn {
   width: 44px;
@@ -491,7 +532,7 @@
   justify-content: center;
   flex-shrink: 0;
   position: absolute;
-  left: calc(50% + 80px);
+  left: calc(50% + 160px);
   transition: color 150ms, border-color 150ms, background 150ms, opacity 150ms;
 }
 
@@ -621,6 +662,106 @@
   display: flex;
   align-items: center;
   gap: 8px;
+  padding: 6px 12px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: 14px;
+  cursor: pointer;
+  transition: color 150ms, border-color 150ms, background 150ms;
+}
+
+.shortcut:hover {
+  color: var(--text);
+  border-color: rgba(155, 111, 255, 0.4);
+  background: rgba(155, 111, 255, 0.08);
+}
+
+/* ── Vector keyboard key ── */
+.kbd {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 30px;
+  height: 30px;
+  padding: 0 9px;
+  border-radius: 7px;
+  background: linear-gradient(180deg, #232b44, #161d30);
+  border: 1px solid #323b57;
+  border-bottom-width: 3px;
+  box-shadow: 0 2px 0 rgba(0, 0, 0, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+/* ── Shortcuts card ── */
+.shortcutsCard {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  padding: 24px 24px 20px;
+  width: calc(100vw - 48px);
+  max-width: 380px;
+}
+
+.shortcutsHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 18px;
+}
+
+.shortcutsTitle {
+  font-size: 18px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--text);
+}
+
+.shortcutsClose {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  font-size: 22px;
+  line-height: 1;
+  cursor: pointer;
+  transition: color 150ms, background 150ms;
+}
+
+.shortcutsClose:hover {
+  color: var(--text);
+  background: var(--line);
+}
+
+.shortcutsList {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.shortcutsRow {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.shortcutKeys {
+  display: flex;
+  gap: 5px;
+  flex-shrink: 0;
+}
+
+.shortcutDesc {
+  font-size: 14px;
+  color: var(--muted);
 }
 
 /*  Mic blocked overlay  */

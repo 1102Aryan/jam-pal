@@ -1,5 +1,34 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import styles from './SessionView.module.css';
+
+const SHORTCUTS = [
+  { keys: ['Space'], label: 'Play / pause the band' },
+  { keys: ['R'],     label: 'Start / stop recording' },
+  { keys: ['L'],     label: 'Arm / clear the looper' },
+  { keys: ['?'],     label: 'Show this shortcut list' },
+  { keys: ['Esc'],   label: 'Close this card' },
+];
+
+// a single vector keyboard key
+function Kbd({ children }) {
+  return <span className={styles.kbd}>{children}</span>;
+}
+
+function KeyboardIcon() {
+  return (
+    <svg viewBox="0 0 24 16" width="22" height="16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round">
+      <rect x="1" y="1" width="22" height="14" rx="2.5" />
+      <line x1="5" y1="5"  x2="5"  y2="5.01" />
+      <line x1="9" y1="5"  x2="9"  y2="5.01" />
+      <line x1="13" y1="5" x2="13" y2="5.01" />
+      <line x1="17" y1="5" x2="17" y2="5.01" />
+      <line x1="7" y1="8"  x2="7"  y2="8.01" />
+      <line x1="11" y1="8" x2="11" y2="8.01" />
+      <line x1="15" y1="8" x2="15" y2="8.01" />
+      <line x1="8" y1="11" x2="16" y2="11" />
+    </svg>
+  );
+}
 
 const MODE_LABELS = {
   breakdown: 'Find the 1',
@@ -31,6 +60,14 @@ function RecordIcon() {
   return (
     <svg viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg">
       <circle cx="8" cy="8" r="5" />
+    </svg>
+  );
+}
+
+function StopIcon() {
+  return (
+    <svg viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg">
+      <rect x="3" y="3" width="10" height="10" rx="2.5" />
     </svg>
   );
 }
@@ -131,7 +168,7 @@ const EMPTY_SLOTS = ['—', '—', '—', '—'];
 function SessionView({
   bpm, musicKey, activeBeat, listening, bandPlaying, micBlocked, countIn,
   chordHistory = [],
-  username, onToggleMic,
+  username, onToggleMic, onEndSession,
   genre = 'rock', style = 'supportive', timeSig = '4/4',
   jamMode = null,
   timing = null,
@@ -141,6 +178,7 @@ function SessionView({
 }) {
   const isActive = listening || bandPlaying;
   const ringRef  = useRef(null);
+  const [showShortcuts, setShowShortcuts] = useState(false);
 
   // pad history to 4 slots, newest on the right
   const slots = [...EMPTY_SLOTS];
@@ -161,14 +199,34 @@ function SessionView({
 
   useEffect(() => {
     const handleKeyDown = (e) => {
-      if (e.code === 'Space' && e.target === document.body) {
+      // Ignore if focused on text field
+      if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') {
+        return;
+      }
+      // Esc closes the shortcuts card; "?" opens it
+      if (e.code === 'Escape') { setShowShortcuts(false); return; }
+      if (e.key === '?')       { setShowShortcuts((v) => !v); return; }
+      // don't fire actions while the shortcuts card is open
+      if (showShortcuts) return;
+
+      if (e.code === 'Space') {       // Play / pause
         e.preventDefault();
         onToggleMic();
+      }
+      if (e.code === 'KeyR') {        // Record
+        e.preventDefault();
+        onToggleRecording();
+      }
+      if (e.code === 'KeyL') {        // Loop
+        e.preventDefault();
+        onToggleLoop();
       }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [onToggleMic]);
+  }, [onToggleMic, onToggleRecording, onToggleLoop, showShortcuts]);
+
+
 
   return (
     <div className={styles.console}>
@@ -176,6 +234,14 @@ function SessionView({
         <div className={styles.countInOverlay}>
           <span key={countIn} className={`${styles.countInLabel} ${countIn === 'Play' ? styles.countInPlay : ''}`}>
             {countIn}
+          </span>
+        </div>
+      )}
+
+      {jamMode && (
+        <div className={styles.modeOverlay}>
+          <span key={jamMode} className={`${styles.modeLabel} ${styles[`modeLabel_${jamMode}`]}`}>
+            {MODE_LABELS[jamMode]}
           </span>
         </div>
       )}
@@ -242,12 +308,6 @@ function SessionView({
               ))}
             </div>
 
-            {jamMode && (
-              <div key={jamMode} className={`${styles.modeBanner} ${styles[`modeBanner_${jamMode}`]}`}>
-                {MODE_LABELS[jamMode]}
-              </div>
-            )}
-
             <div className={styles.chips}>
               <span className={styles.chip}>genre · {genre}</span>
               <span className={styles.chip}>style · {style}</span>
@@ -307,6 +367,15 @@ function SessionView({
         </button>
 
         <button
+          className={styles.endBtn}
+          onClick={onEndSession}
+          aria-label="End session and see report"
+          title="End session — see your report"
+        >
+          <StopIcon />
+        </button>
+
+        <button
           className={`${styles.recordBtn} ${isRecording ? styles.recordBtnActive : ''}`}
           onClick={onToggleRecording}
           disabled={!isActive}
@@ -318,15 +387,38 @@ function SessionView({
 
         <div className={styles.rightControls}>
           <span className={styles.timeSig}>{timeSig}</span>
-          <span className={styles.shortcut}>
-            <svg viewBox="0 0 20 20" width="22" height="22" fill="currentColor" opacity="0.5">
-              <rect x="2" y="5" width="16" height="10" rx="2" stroke="currentColor" strokeWidth="1.5" fill="none" />
-              <rect x="5" y="8" width="10" height="4" rx="1" />
-            </svg>
-            space to play
-          </span>
+          <button
+            className={styles.shortcut}
+            onClick={() => setShowShortcuts(true)}
+            aria-label="Keyboard shortcuts"
+            title="Keyboard shortcuts (?)"
+          >
+            <KeyboardIcon />
+            Shortcuts
+          </button>
         </div>
       </div>
+
+      {showShortcuts && (
+        <div className={styles.overlay} onClick={() => setShowShortcuts(false)}>
+          <div className={styles.shortcutsCard} onClick={(e) => e.stopPropagation()}>
+            <div className={styles.shortcutsHead}>
+              <h2 className={styles.shortcutsTitle}>Keyboard shortcuts</h2>
+              <button className={styles.shortcutsClose} onClick={() => setShowShortcuts(false)} aria-label="Close">×</button>
+            </div>
+            <ul className={styles.shortcutsList}>
+              {SHORTCUTS.map((s) => (
+                <li key={s.label} className={styles.shortcutsRow}>
+                  <span className={styles.shortcutKeys}>
+                    {s.keys.map((k) => <Kbd key={k}>{k}</Kbd>)}
+                  </span>
+                  <span className={styles.shortcutDesc}>{s.label}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
