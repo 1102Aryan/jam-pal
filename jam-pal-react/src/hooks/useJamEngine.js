@@ -27,6 +27,13 @@ export function useJamEngine({ style = 'supportive', genre = 'blues' } = {}) {
   const [isRecording,  setRecording]    = useState(false);
   const [loopStatus,   setLoopStatus]   = useState({ mode: 'off', bar: 0, bars: 4 });
   const [sessionReport, setSessionReport] = useState(null);
+  // Audio Input
+  const [audioDevices, setAudioDevices] = useState([]);
+  const [selectedDeviceId, setSelectedDeviceId] = useState('');
+  // Metronome
+  const [isMetronomeOn, setIsMetronomeOn] = useState(false);
+  // Lock
+  const [isLockOn, setIsLockOn] = useState(false);
 
   const engineRef    = useRef(null);
   const schedulerRef = useRef(null);
@@ -68,6 +75,7 @@ export function useJamEngine({ style = 'supportive', genre = 'blues' } = {}) {
           setTimeout(() => setOnsetFlash(false), 90);
         },
       });
+      engineRef.current._deviceId = deviceId
     }
     return engineRef.current;
   }
@@ -77,7 +85,10 @@ export function useJamEngine({ style = 'supportive', genre = 'blues' } = {}) {
     setSessionReport(null);
     statsRef.current = createSessionStats();
     const engine = ensureEngine();
-    const ok = await engine.start();
+
+
+
+    const ok = await engine.start(selectedDeviceId);
     if (!ok) {
       engineRef.current = null;
       setMicBlocked(true);
@@ -102,7 +113,7 @@ export function useJamEngine({ style = 'supportive', genre = 'blues' } = {}) {
     // count-in fires immediately so the user gets the pulse
     setCountIn(3);
     setIsCountingIn(true);
-  }, []);
+  }, [selectedDeviceId]);
 
   const stopMic = useCallback(() => {
     setIsCountingIn(false);
@@ -115,6 +126,7 @@ export function useJamEngine({ style = 'supportive', genre = 'blues' } = {}) {
     const engine = engineRef.current;
     engineRef.current = null;
     setListening(false);
+    setIsLockOn(false);   // a fresh session starts unlocked (engine is recreated)
 
     // produce the session report from everything collected this jam
     const report = statsRef.current?.summarize() ?? null;
@@ -131,6 +143,40 @@ export function useJamEngine({ style = 'supportive', genre = 'blues' } = {}) {
     setTiming(null);
     setLoopStatus({ mode: 'off', bar: 0, bars: 4 });
   }, []);
+
+  // Option to use input device
+  useEffect(() => {
+    async function fetchDevices() {
+      try {
+        const devices = await navigator.mediaDevices.enumerateDevices();
+
+        const audioInputs = devices.filter(device => device.kind === 'audioinput');
+
+        setAudioDevices(audioInputs);
+
+        if (audioInputs.length > 0) {
+          setSelectedDeviceId(audioInputs[0].deviceId);
+        }
+      } catch (e) {
+        console.error("Error fetching devices:", e);
+      }
+    }
+    fetchDevices();
+  }, []);
+
+  const toggleMetronome = useCallback(() => {
+    if (!engineRef.current) return;
+    const newState = engineRef.current.toggleMetronome();
+    setIsMetronomeOn(newState);
+  }, []);
+
+  const toggleLock = useCallback(() => {
+    if (!engineRef.current) return;
+    const newState = engineRef.current.toggleLock();
+    setIsLockOn(newState);
+  }, []);
+
+
 
   // count-in ticker — when it finishes, mark bandReady but don't start the band yet
   useEffect(() => {
@@ -181,8 +227,9 @@ export function useJamEngine({ style = 'supportive', genre = 'blues' } = {}) {
   return {
     listening, bandPlaying, bandReady,
     bpm, musicKey, chordHistory, rms, energy, activeBeat, status, onsetFlash, micBlocked, countIn,
-    jamMode, timing, isRecording, loopStatus, sessionReport,
-    drumVolume, bassVolume, setDrumVolume, setBassVolume,
+    jamMode, timing, isRecording, loopStatus, sessionReport, isMetronomeOn, toggleMetronome,
+    isLockOn, toggleLock,
+    drumVolume, bassVolume, audioDevices, selectedDeviceId, setSelectedDeviceId, setDrumVolume, setBassVolume,
     toggleMic, toggleRecording, toggleLoop,
   };
 }

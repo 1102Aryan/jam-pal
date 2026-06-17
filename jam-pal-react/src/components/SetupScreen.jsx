@@ -20,6 +20,8 @@ function SetupScreen({
   onStart,
   genre = 'blues', style = 'supportive', timeSig = '4/4',
   onGenreChange, onStyleChange, onTimeSigChange,
+
+  audioDevices = [], selectedDeviceId, setSelectedDeviceId
 }) {
   return (
     <div className={styles.page}>
@@ -44,6 +46,21 @@ function SetupScreen({
         <span className={styles.noteAccent}>Best results:</span> play full chords rather than single
         notes — chords give the key detector enough pitch information to be confident.
         Key detection scores are logged to the console (F12) if you want to see the confidence.
+      </div>
+
+      <div className={styles.configField}>
+        <label className={styles.configLabel}>Audio Input</label>
+        <select
+          value={selectedDeviceId}
+          onChange={(e) => setSelectedDeviceId?.(e.target.value)}
+          className={styles.selectDropdown}
+        >
+          {audioDevices.map((device, index) => (
+            <option key={device.deviceId} value={device.deviceId}>
+              {device.label || `Microphone ${index + 1}`}
+            </option>
+          ))}
+        </select>
       </div>
 
       <div className={styles.configField}>

@@ -2,13 +2,17 @@ import {
   BASELINE_RATE, ONSET_FACTOR, REFRACTORY, RMS_GATE, ONSET_GATE_DUR,
   ENERGY_ATTACK, ENERGY_RELEASE, LOCKED_FOLLOW_SCALE, BASS_SAMPLE_MIDI, DRUM_KIT,
   DEFAULT_OUTPUT_LATENCY, INPUT_LATENCY_EST, FEEDBACK_GUARD, BAND_HIT_TTL,
-  CHORD_HOLD_SEC, NOTE_NAMES,
+  CHORD_HOLD_SEC, CHORD_HOLD_MIN, NOTE_NAMES,
   TIMING_REFRACTORY, TIMING_WINDOW, TIMING_TIGHT_SEC, TIMING_ONBEAT_FRAC,
+  TEMPO_LOOKAHEAD_BEATS,
 } from './config.js';
 import {
   computeSpectralFlux, updateChroma, detectKey, detectChord, updateTempo,
   wobbleToFollowRate, energyLevel,
 } from './analysis.js';
+import { createBeatPredictor } from './beatPredictor.js';
+import { createChordPredictor } from './chordPredictor.js';
+// import { channel } from 'diagnostics_channel';
 
 const pcToBassFreq = (pc) => 440 * Math.pow(2, (36 + pc - 69) / 12); // C2..B2
 
@@ -90,6 +94,7 @@ export function createAudioEngine(callbacks = {}) {
   let detectedBPM      = null;
   let lastDisplayedBPM = null;
   let smoothedWobble   = 0;
+  const beatPredictor  = createBeatPredictor(); // anticipatory tempo model
   const chromaProfile  = new Float32Array(12).fill(0);
   let detectedRoot     = null;
   let detectedMode     = null;
@@ -103,17 +108,31 @@ export function createAudioEngine(callbacks = {}) {
   let chordQuality     = 'maj';
   let lastChordLabel   = null;
   let chordLocked      = false; // when true the looper drives the chord, not the mic
+  const chordPredictor = createChordPredictor(); // anticipates the next chord
   // candidate awaiting confirmation (hysteresis)
   let candRootPc       = null;
+  let candQuality      = 'maj';
   let candSince        = 0;
   let smoothedEnergy   = 0;
   let smoothedBPM      = 100;
+  let bpmLocked        = false;   // when true, the band tempo is pinned (manual)
   let bandPlaying      = false;
   let bandBus          = null;
   let drumBus          = null;
   let bassBus          = null;
   let drumVolume       = 0.85;
   let bassVolume       = 1.0;
+
+  // Metronome — runs on its own AudioContext + timer (separate from the main
+  // audioCtx). Armed by the button; clicks only while the session is playing.
+  let metroCtx         = null;
+  let metroBus         = null;
+  let metroTimer       = null;
+  let metroVolume      = 0.5;
+  let isMetronomeOn    = false;
+  let nextClickTime    = 0;
+  let metronomeBeat    = 0;
+
   let recorderNode     = null;  // taps band + mic, accumulates PCM while recording
   let recording        = false;
   let recLeft          = [];    // Float32 chunks per channel
@@ -203,7 +222,34 @@ export function createAudioEngine(callbacks = {}) {
     getDrumVolume:   () => drumVolume,
     getBassVolume:   () => bassVolume,
 
-    // ---- recording: capture the jam (band + mic) to a downloadable file ----
+    // ---- metronome controls ----
+    // The button *arms* the metronome (stays lit), but it only clicks while the
+    // session is playing — it goes silent on pause and resumes on play.
+    toggleMetronome() {
+      isMetronomeOn = !isMetronomeOn;
+      if (isMetronomeOn && listening) startMetronome();
+      else if (!isMetronomeOn)        stopMetronome();
+      return isMetronomeOn;
+    },
+    setMetronomeVolume(v) {
+      metroVolume = v;
+      if (metroBus) metroBus.gain.value = v;
+    },
+
+    // ---- tempo lock ----
+    // Pin the band tempo to whatever it is right now so it stops auto-following
+    // the player; the displayed BPM freezes too. Toggling off resumes following.
+    toggleLock() {
+      bpmLocked = !bpmLocked;
+      if (bpmLocked) {
+        const locked = Math.round(smoothedBPM);
+        lastDisplayedBPM = locked;
+        callbacks.onBpm?.(locked);
+      }
+      return bpmLocked;
+    },
+
+    // ---- recording: capture the jam ----
     isRecording: () => recording,
 
     startRecording() {
@@ -273,16 +319,43 @@ export function createAudioEngine(callbacks = {}) {
       if (detectedBPM !== null) smoothedBPM = detectedBPM;
     },
 
-    // called every scheduler tick so the band tempo glides toward detected BPM;
-    // once the band is playing it follows less eagerly — it holds the pocket
-    // and lets the player float rather than chasing every fluctuation
+    // called every scheduler tick so the band tempo glides toward the player's
+    // *forecast* tempo (anticipation), not the laggy past tempo; once playing it
+    // follows less eagerly — holding the pocket while still leaning the right way
     syncBandBPM() {
+      if (bpmLocked) return;           // tempo pinned — don't follow the player
       if (detectedBPM !== null) {
-        smoothedBPM += LOCKED_FOLLOW_SCALE * wobbleToFollowRate(smoothedWobble) * (detectedBPM - smoothedBPM);
+        const target = beatPredictor.predict(TEMPO_LOOKAHEAD_BEATS);
+        smoothedBPM += LOCKED_FOLLOW_SCALE * wobbleToFollowRate(smoothedWobble) * (target - smoothedBPM);
       }
     },
 
-    async start() {
+    async start(deviceId = null) {
+      try {
+        const constraints = {
+          audio: {
+            echoCancellation: false,
+            noiseSuppression: false,
+            autoGainControl: false,
+            channelCount: 1
+          }
+        };
+        if (deviceId) {
+          constraints.audio.device = { exact: deviceId };
+        }
+
+        micStream = await navigator.mediaDevices.getUserMedia(constraints);
+
+      } catch (e) {
+        callbacks.onStatus?.('Audio Input failed: ', e.message);
+        return false;
+      }
+
+      const AudioCtx = window.AudioContext || /** @type {any} */ (window).webkitAudioContext;
+      audioCtx = new AudioCtx();
+      if (audioCtx.state === 'suspended') await audioCtx.resume();
+      loadKit();
+
       try {
         micStream = await navigator.mediaDevices.getUserMedia({
           audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false },
@@ -292,17 +365,7 @@ export function createAudioEngine(callbacks = {}) {
         return false;
       }
 
-      const AudioCtx = window.AudioContext || /** @type {any} */ (window).webkitAudioContext;
-      audioCtx = new AudioCtx();
-      if (audioCtx.state === 'suspended') await audioCtx.resume();
-      loadKit(); // async — fills samples{}; synth voices are the fallback
 
-      // Signal flow:
-      //   drums → drumBus ─┐
-      //                    ├→ bandBus → comp → destination
-      //   bass → bassBus → lowShelf ─┘            └→ reverb send → destination
-      // drumBus / bassBus are the user volume faders; the low shelf deepens the
-      // bass; the compressor glues the kit; a small reverb send adds room.
       bandBus = audioCtx.createGain();
 
       drumBus = audioCtx.createGain();
@@ -367,11 +430,13 @@ export function createAudioEngine(callbacks = {}) {
       // reset analysis state
       fluxBaseline = 0; lastOnsetTime = -1; onsetTimes.length = 0;
       detectedBPM = null; lastDisplayedBPM = null; smoothedWobble = 0;
+      beatPredictor.reset(smoothedBPM);
       chromaProfile.fill(0); detectedRoot = null; detectedMode = null;
       bassRootFreq = 65.41; keyRootFreq = 65.41; onsetGateExpiry = 0;
       keyFrameCount = 0; chordFrameCount = 0;
       chordRootPc = null; chordQuality = 'maj'; lastChordLabel = null;
-      chordLocked = false; candRootPc = null; candSince = 0;
+      chordLocked = false; candRootPc = null; candQuality = 'maj'; candSince = 0;
+      chordPredictor.reset();
       smoothedEnergy = 0; bandHits.length = 0;
       beatTimes.length = 0; timingOffsets.length = 0; lastTimingOnset = -1;
 
@@ -379,12 +444,17 @@ export function createAudioEngine(callbacks = {}) {
       callbacks.onListeningChange?.(true);
       callbacks.onStatus?.('Listening. Strum chords or pick notes to set the tempo.');
 
+      // resume the click if the metronome was left armed while paused
+      if (isMetronomeOn) startMetronome();
+
       rafId = requestAnimationFrame(loop);
       return true;
     },
 
     stop() {
       listening = false;
+      // silence the click on pause, but leave it armed (button stays lit)
+      stopMetronome();
       // finalise any in-progress recording so it still downloads (before the
       // context closes — encoding needs audioCtx.sampleRate)
       api.stopRecording();
@@ -452,8 +522,14 @@ export function createAudioEngine(callbacks = {}) {
           chordQuality = cand.quality;   // same root: refine maj/min freely
           candRootPc = null;
           emitChord();
-        } else if (cand.rootPc === candRootPc) {
-          if (now - candSince >= CHORD_HOLD_SEC) {
+        } else if (cand.rootPc === candRootPc && cand.quality === candQuality) {
+          // shorten the wait when the change is harmonically expected, keep the
+          // full cautious wait when it's a surprise (anticipation)
+          const from = chordRootPc === null ? null : { rootPc: chordRootPc, quality: chordQuality };
+          const to   = { rootPc: cand.rootPc, quality: cand.quality };
+          const hold = CHORD_HOLD_MIN + (1 - chordPredictor.score(from, to)) * (CHORD_HOLD_SEC - CHORD_HOLD_MIN);
+          if (now - candSince >= hold) {
+            chordPredictor.observe(from, to); // learn the player's progression
             chordRootPc  = cand.rootPc;
             chordQuality = cand.quality;
             bassRootFreq = pcToBassFreq(chordRootPc);
@@ -461,8 +537,9 @@ export function createAudioEngine(callbacks = {}) {
             emitChord();
           }
         } else {
-          candRootPc = cand.rootPc;   // new contender — start its timer
-          candSince  = now;
+          candRootPc  = cand.rootPc;    // new contender — start its timer
+          candQuality = cand.quality;
+          candSince   = now;
         }
       }
       // no confident candidate → hold the current chord
@@ -470,8 +547,8 @@ export function createAudioEngine(callbacks = {}) {
 
     fluxBaseline += BASELINE_RATE * (flux - fluxBaseline);
 
-    // stale BPM — no onsets for > 3 s
-    if (detectedBPM !== null && (now - lastOnsetTime) > 3.0) {
+    // stale BPM — no onsets for > 3 s (but keep the frozen reading while locked)
+    if (!bpmLocked && detectedBPM !== null && (now - lastOnsetTime) > 3.0) {
       detectedBPM = null; lastDisplayedBPM = null;
       callbacks.onBpm?.(null);
     }
@@ -499,21 +576,67 @@ export function createAudioEngine(callbacks = {}) {
       if (tempo) {
         detectedBPM   = tempo.detectedBPM;
         smoothedWobble = tempo.smoothedWobble;
+        beatPredictor.observe(detectedBPM, smoothedWobble, now); // feed the anticipatory model
         const rounded = Math.round(detectedBPM);
-        if (lastDisplayedBPM === null || Math.abs(rounded - lastDisplayedBPM) >= 3) {
+        if (!bpmLocked && (lastDisplayedBPM === null || Math.abs(rounded - lastDisplayedBPM) >= 3)) {
           callbacks.onBpm?.(rounded);
           lastDisplayedBPM = rounded;
         }
       }
     }
 
-    // glide smoothedBPM while band is not running
-    if (!bandPlaying && detectedBPM !== null) {
-      smoothedBPM += wobbleToFollowRate(smoothedWobble) * (detectedBPM - smoothedBPM);
+    // glide smoothedBPM while band is not running — toward the *forecast*, not
+    // the laggy past tempo, so the band is already at speed when it enters
+    if (!bpmLocked && !bandPlaying && detectedBPM !== null) {
+      const target = beatPredictor.predict(TEMPO_LOOKAHEAD_BEATS);
+      smoothedBPM += wobbleToFollowRate(smoothedWobble) * (target - smoothedBPM);
     }
 
     rafId = requestAnimationFrame(loop);
   }
+
+  // Standalone metronome: its own AudioContext + timer (kept separate from the
+  // main audioCtx). Started on play, stopped on pause. Schedules clicks with a
+  // lookahead and follows smoothedBPM.
+  function startMetronome() {
+    if (!metroCtx) {
+      const AudioCtx = window.AudioContext || /** @type {any} */ (window).webkitAudioContext;
+      metroCtx = new AudioCtx();
+      metroBus = metroCtx.createGain();
+      metroBus.gain.value = metroVolume;
+      metroBus.connect(metroCtx.destination);
+    }
+    metroCtx.resume?.();
+    nextClickTime = metroCtx.currentTime + 0.05;
+    metronomeBeat = 0;
+
+    if (metroTimer) clearInterval(metroTimer);
+    const lookahead = 0.1;
+    metroTimer = setInterval(() => {
+      const now = metroCtx.currentTime;
+      if (nextClickTime < now) nextClickTime = now; // catch up after a stall
+      while (nextClickTime < now + lookahead) {
+        const osc = metroCtx.createOscillator();
+        const env = metroCtx.createGain();
+        osc.frequency.value = (metronomeBeat % 4 === 0) ? 1000 : 800;
+        env.gain.setValueAtTime(1, nextClickTime);
+        env.gain.exponentialRampToValueAtTime(0.001, nextClickTime + 0.05);
+        osc.connect(env);
+        env.connect(metroBus);
+        osc.start(nextClickTime);
+        osc.stop(nextClickTime + 0.05);
+
+        nextClickTime += 60.0 / smoothedBPM;
+        metronomeBeat++;
+      }
+    }, 25);
+  }
+
+  function stopMetronome() {
+    if (metroTimer) { clearInterval(metroTimer); metroTimer = null; }
+    if (metroCtx)   { metroCtx.close(); metroCtx = metroBus = null; }
+  }
+
   async function loadSample(url) {
     const res = await fetch(url);
     if (!res.ok) throw new Error(`HTTP ${res.status} for ${url}`);

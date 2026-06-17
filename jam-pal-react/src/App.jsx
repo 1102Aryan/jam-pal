@@ -29,6 +29,9 @@ function App() {
         onGenreChange={setGenre}
         onStyleChange={setStyle}
         onTimeSigChange={setTimeSig}
+        audioDevices={engine.audioDevices}
+        selectedDeviceId={engine.selectedDeviceId}
+        setSelectedDeviceId={engine.setSelectedDeviceId}
       />
     );
   }
@@ -56,6 +59,10 @@ function App() {
       onEndSession={endSession}
       isRecording={engine.isRecording}
       onToggleRecording={engine.toggleRecording}
+      isMetronomeOn={engine.isMetronomeOn}
+      onToggleMetronome={engine.toggleMetronome}
+      isLockOn={engine.isLockOn}
+      onToggleLock={engine.toggleLock}
       loopStatus={engine.loopStatus}
       onToggleLoop={engine.toggleLoop}
       genre={genre}

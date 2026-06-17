@@ -352,6 +352,30 @@
   position: relative;
 }
 
+/* Transport cluster — flex row, centred between leftStack & rightControls.
+   The two side groups share an identical min-width so the play button always
+   lands at the exact centre (= ring centre above), regardless of how many
+   buttons sit on each side. */
+.transport {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  flex-shrink: 0;
+}
+
+.transportSide {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end; /* left group hugs the play button */
+  gap: 14px;
+  min-width: 160px;
+}
+
+.transportSideRight {
+  justify-content: flex-start; /* right group hugs the play button */
+}
+
 .leftStack {
   flex: 1;
   display: flex;
@@ -496,10 +520,8 @@
   background: transparent;
   color: var(--muted);
   display: flex;
-  position: absolute;
   align-items: center;
   justify-content: center;
-  left: calc(50% + 80px);
   flex-shrink: 0;
   transition: color 150ms, border-color 150ms, background 150ms;
 }
@@ -531,8 +553,6 @@
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
-  position: absolute;
-  left: calc(50% + 160px);
   transition: color 150ms, border-color 150ms, background 150ms, opacity 150ms;
 }
 
@@ -567,6 +587,96 @@
   50%      { box-shadow: 0 0 0 6px rgba(255, 77, 77, 0); }
 }
 
+.metronomeBtn {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  border: 2px solid var(--line); /* muted ring when off */
+  color: var(--muted);
+  cursor: pointer;
+  background: transparent;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  transition: color 150ms, border-color 150ms, background 150ms, opacity 150ms;
+}
+
+.metronomeBtn svg {
+  width: 20px;
+  height: 20px;
+  display: block;
+}
+
+.metronomeBtn:hover:not(.metronomeBtnActive):not(:disabled) {
+  color: var(--text);
+  border-color: var(--text);
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.metronomeBtn:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.metronomeBtnActive {
+  color: #fff;
+  border-color: #fff;
+  background: rgba(255, 255, 255, 0.08);
+  box-shadow: 0 0 10px rgba(255, 255, 255, 0.35);
+}
+
+
+.metronomeBtnActive:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.14);
+}
+
+
+/* tempo lock button */
+.lockBtn {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  border: 2px solid var(--line); /* muted ring when unlocked */
+  color: var(--muted);
+  cursor: pointer;
+  background: transparent;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  transition: color 150ms, border-color 150ms, background 150ms, opacity 150ms;
+}
+
+.lockBtn svg {
+  width: 20px;
+  height: 20px;
+  display: block;
+}
+
+.lockBtn:hover:not(.lockBtnActive):not(:disabled) {
+  color: var(--text);
+  border-color: var(--text);
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.lockBtn:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.lockBtnActive {
+  color: #ffc83d; /* golden when the tempo is locked */
+  border-color: #ffc83d;
+  background: rgba(255, 200, 61, 0.1);
+  box-shadow: 0 0 10px rgba(255, 200, 61, 0.35);
+}
+
+.lockBtnActive:hover:not(:disabled) {
+  background: rgba(255, 200, 61, 0.18);
+}
+
+
 /* loop button */
 .loopBtn {
   width: 44px;
@@ -582,9 +692,8 @@
   justify-content: center;
   flex-shrink: 0;
   transition: color 150ms, border-color 150ms, background 150ms, opacity 150ms;
-  position: absolute;
-  right: calc(50% + 80px);
 }
+
 
 .loopBtn svg {
   width: 20px;
@@ -698,7 +807,7 @@
   color: var(--text);
 }
 
-/* ── Shortcuts card ── */
+/*  Shortcuts card  */
 .shortcutsCard {
   background: var(--panel);
   border: 1px solid var(--line);
@@ -857,4 +966,81 @@
 .countInPlay {
   font-size: 72px;
   color: var(--accent);
+}
+
+/* Mobile and Tables layout */
+@media (max-width: 768px) {
+  /* Bottom bar becomes a vertical stack of three centred rows */
+  .bottomBar {
+    flex-direction: column;
+    height: auto;
+    padding: 16px 16px 24px;
+    gap: 18px;
+  }
+
+  .leftStack,
+  .rightControls {
+    flex: none;
+    width: 100%;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .chords {
+    justify-content: center;
+  }
+
+  .mixer {
+    justify-content: center;
+    flex-wrap: wrap;
+  }
+
+  .transport {
+    flex-wrap: wrap;
+    width: 100%;
+  }
+
+  /* Timing meter: shrink the track and drop the stat below it */
+  .timing {
+    flex-wrap: wrap;
+    padding: 8px 16px 0;
+  }
+
+  .timingTrack {
+    width: min(70vw, 280px);
+  }
+
+  .timingStat {
+    position: static;
+    left: auto;
+    width: 100%;
+    text-align: center;
+    margin-top: 6px;
+  }
+
+  /* Shrink the central ring so it fits a phone viewport */
+  .ringWrap {
+    width: min(80vw, 320px);
+    height: min(80vw, 320px);
+  }
+
+  .bpmNum   { font-size: 72px; }
+  .modeLabel  { font-size: 48px; }
+  .countInLabel { font-size: 96px; }
+
+  /* Top bar: tighter padding + smaller text */
+  .topBar { padding: 0 16px; }
+  .logo     { font-size: 24px; }
+  .username { font-size: 18px; }
+  .userAvatar { width: 36px; height: 36px; }
+}
+
+@media (max-width: 420px) {
+  /* On very small screens give the volume faders more room */
+  .fader input[type='range'] { width: 70px; }
+  .bpmNum { font-size: 60px; }
+
+  /* Hide the "Shortcuts" label, keep the icon button */
+  .shortcut { font-size: 0; padding: 6px; }
+  .shortcut svg { font-size: initial; }
 }

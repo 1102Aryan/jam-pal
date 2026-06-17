@@ -9,6 +9,9 @@ export const ONSET_GATE_DUR = 0.40;   // seconds to accumulate chroma after onse
 
 // Tempo
 export const TEMPO_WINDOW = 5;        // gaps between last N onsets
+// How many beats ahead the band forecasts the player's tempo (anticipation).
+// 0 = pure reaction; ~1 leads the player's drift so the band stops trailing.
+export const TEMPO_LOOKAHEAD_BEATS = 1.0;
 
 // Scheduler
 export const LOOKAHEAD_MS    = 25;
@@ -33,7 +36,8 @@ export const KEY_CONFIDENCE  = 0.65;
 export const CHORD_MIN_ENERGY  = 1.0;   // ignore near-silent chroma
 export const CHORD_CONFIDENCE  = 0.34;  // share of energy the chord must explain
 export const CHORD_THIRD_DEADZONE = 1.4; // maj/min only flips when one third clearly wins
-export const CHORD_HOLD_SEC    = 0.45;  // a new chord must persist this long before we switch
+export const CHORD_HOLD_SEC    = 0.45;  // hysteresis for a *surprising* chord change
+export const CHORD_HOLD_MIN    = 0.14;  // hysteresis for a fully *expected* change (anticipation)
 export const KS_MAJOR = [6.35, 2.23, 3.48, 2.33, 4.38, 4.09, 2.52, 5.19, 2.39, 3.66, 2.29, 2.88];
 export const KS_MINOR = [6.33, 2.68, 3.52, 5.38, 2.60, 3.53, 2.54, 4.75, 3.98, 2.69, 3.34, 3.17];
 export const NOTE_NAMES = ['C', 'C♯', 'D', 'D♯', 'E', 'F', 'F♯', 'G', 'G♯', 'A', 'A♯', 'B'];
