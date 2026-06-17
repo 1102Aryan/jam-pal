@@ -231,19 +231,22 @@ export function createScheduler(engine, brain) {
   // round-robin cursor per drum-layer, so repeated hits cycle through takes
   const rrCursor = {};
 
-  // pick a buffer for `name` at velocity `gain`: choose the velocity layer from
-  // how hard the hit is, then advance that layer's round-robin to the next take
-  function pickDrumBuffer(drumKit, name, gain) {
-    const layers = drumKit?.[name];
+  // pick a buffer from a layers[]-of-takes[] structure (used by both the drum
+  // kit and the bass multisample): choose the velocity layer from how hard the
+  // hit is (`vel` 0–1), then advance that layer's round-robin to the next take.
+  // `key` namespaces the round-robin cursor so layers don't share a counter.
+  function pickFromLayers(layers, key, vel) {
     if (!layers || !layers.length) return null;
-    const li    = Math.min(layers.length - 1, Math.floor(Math.min(gain, 0.999) * layers.length));
+    const li    = Math.min(layers.length - 1, Math.floor(Math.min(vel, 0.999) * layers.length));
     const takes = layers[li];
     if (!takes.length) return null;
-    const key  = `${name}:${li}`;
-    const next = ((rrCursor[key] ?? -1) + 1) % takes.length;
-    rrCursor[key] = next;
+    const k    = `${key}:${li}`;
+    const next = ((rrCursor[k] ?? -1) + 1) % takes.length;
+    rrCursor[k] = next;
     return takes[next];
   }
+
+  const pickDrumBuffer = (drumKit, name, gain) => pickFromLayers(drumKit?.[name], name, gain);
 
   // try each name in order (for fallback chains like crash → openhat → hihat)
   function pickFirst(drumKit, names, gain) {
@@ -290,8 +293,12 @@ export function createScheduler(engine, brain) {
       const targetFreq = engine.getBassRootFreq() * Math.pow(2, ev.semi / 12);
       const bass = engine.getSamples().bass;
       if (bass && Object.keys(bass).length) {
-        const sm = nearestSampleMidi(bass, freqToMidi(targetFreq));
-        playBassSample(audioCtx, dest, bass[sm], sm, targetFreq, ev, t);
+        // velocity layer follows the band's energy (the bass's own gain still
+        // shapes the level); round-robin keeps repeated notes from being identical
+        const sm  = nearestSampleMidi(bass, freqToMidi(targetFreq));
+        const buf = pickFromLayers(bass[sm], `bass${sm}`, engine.getEnergyLevel());
+        if (buf) playBassSample(audioCtx, dest, buf, sm, targetFreq, ev, t);
+        else     playBassSynth(audioCtx, dest, engine.getNoiseBuffer(), targetFreq, ev, t);
       } else {
         playBassSynth(audioCtx, dest, engine.getNoiseBuffer(), targetFreq, ev, t);
       }

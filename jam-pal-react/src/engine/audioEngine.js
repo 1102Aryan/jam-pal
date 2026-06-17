@@ -1,6 +1,7 @@
 import {
   BASELINE_RATE, ONSET_FACTOR, REFRACTORY, RMS_GATE, ONSET_GATE_DUR,
-  ENERGY_ATTACK, ENERGY_RELEASE, LOCKED_FOLLOW_SCALE, BASS_SAMPLE_MIDI, DRUM_KIT,
+  ENERGY_ATTACK, ENERGY_RELEASE, LOCKED_FOLLOW_SCALE,
+  BASS_NOTES, BASS_VELOCITY_LAYERS, BASS_ROUND_ROBINS, DRUM_KIT, GENRE_KITS, GENRE_FX,
   DEFAULT_OUTPUT_LATENCY, INPUT_LATENCY_EST, FEEDBACK_GUARD, BAND_HIT_TTL,
   CHORD_HOLD_SEC, CHORD_HOLD_MIN, NOTE_NAMES,
   TIMING_REFRACTORY, TIMING_WINDOW, TIMING_TIGHT_SEC, TIMING_ONBEAT_FRAC,
@@ -12,6 +13,10 @@ import {
 } from './analysis.js';
 import { createBeatPredictor } from './beatPredictor.js';
 import { createChordPredictor } from './chordPredictor.js';
+
+// Samples live under Vite's base URL (the app is served from /jam-pal/), so
+// fetch them relative to that — NOT from the site root, which 404s.
+const SAMPLE_ROOT = import.meta.env.BASE_URL + 'samples/';
 // import { channel } from 'diagnostics_channel';
 
 const pcToBassFreq = (pc) => 440 * Math.pow(2, (36 + pc - 69) / 12); // C2..B2
@@ -330,41 +335,32 @@ export function createAudioEngine(callbacks = {}) {
       }
     },
 
-    async start(deviceId = null) {
+    async start(deviceId = null, genre = 'rock') {
       try {
         const constraints = {
           audio: {
             echoCancellation: false,
             noiseSuppression: false,
             autoGainControl: false,
-            channelCount: 1
-          }
+            channelCount: 1,
+          },
         };
         if (deviceId) {
-          constraints.audio.device = { exact: deviceId };
+          constraints.audio.deviceId = { exact: deviceId };
         }
 
         micStream = await navigator.mediaDevices.getUserMedia(constraints);
-
-      } catch (e) {
-        callbacks.onStatus?.('Audio Input failed: ', e.message);
+      } catch (err) {
+        callbacks.onStatus?.('Mic permission denied: ' + err.message);
         return false;
       }
 
       const AudioCtx = window.AudioContext || /** @type {any} */ (window).webkitAudioContext;
       audioCtx = new AudioCtx();
       if (audioCtx.state === 'suspended') await audioCtx.resume();
-      loadKit();
+      loadKit(genre);
 
-      try {
-        micStream = await navigator.mediaDevices.getUserMedia({
-          audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false },
-        });
-      } catch (err) {
-        callbacks.onStatus?.('Mic permission denied: ' + err.message);
-        return false;
-      }
-
+      const fx = GENRE_FX[genre] ?? GENRE_FX.rock;
 
       bandBus = audioCtx.createGain();
 
@@ -372,14 +368,23 @@ export function createAudioEngine(callbacks = {}) {
       drumBus.gain.value = drumVolume;
       drumBus.connect(bandBus);
 
+      // bass chain: volume → low-shelf (weight) → amp compressor (Trio+-style
+      // even, punchy bass that sits forward) → band bus
       bassBus = audioCtx.createGain();
       bassBus.gain.value = bassVolume;
       const bassShelf = audioCtx.createBiquadFilter();
       bassShelf.type = 'lowshelf';
       bassShelf.frequency.value = 140;
       bassShelf.gain.value = 5;          // +5 dB low end for weight
+      const bassComp = audioCtx.createDynamicsCompressor();
+      bassComp.threshold.value = -24;
+      bassComp.knee.value      = 18;
+      bassComp.ratio.value     = 6;      // firm — evens out the notes like a bass amp
+      bassComp.attack.value    = 0.008;
+      bassComp.release.value   = 0.12;
       bassBus.connect(bassShelf);
-      bassShelf.connect(bandBus);
+      bassShelf.connect(bassComp);
+      bassComp.connect(bandBus);
 
       const comp = audioCtx.createDynamicsCompressor();
       comp.threshold.value = -18;
@@ -388,9 +393,9 @@ export function createAudioEngine(callbacks = {}) {
       comp.attack.value    = 0.003;
       comp.release.value   = 0.15;
       const verb = audioCtx.createConvolver();
-      verb.buffer = makeRoomImpulse(audioCtx, 1.1, 2.8);
+      verb.buffer = makeRoomImpulse(audioCtx, fx.roomSeconds, fx.roomDecay); // per-genre space
       const send = audioCtx.createGain();
-      send.gain.value = 0.16;
+      send.gain.value = fx.reverbSend;
       bandBus.connect(comp);
       comp.connect(audioCtx.destination);
       comp.connect(send);
@@ -646,17 +651,18 @@ export function createAudioEngine(callbacks = {}) {
 
   // each sample loads independently so one missing file (e.g. crash.wav)
   // doesn't knock out the whole kit — anything missing falls back to synthesis
-  async function loadKit() {
+  async function loadKit(genre = 'rock') {
     // drum kit: samples.drums[name] = layers[] of takes[] of AudioBuffer.
     // Missing files are dropped silently; a drum with nothing loaded falls back
     // to synthesis. Layers/takes that end up empty are pruned.
+    const kit = GENRE_KITS[genre] ?? DRUM_KIT;
     samples.drums = {};
-    await Promise.all(Object.keys(DRUM_KIT).map(async (name) => {
+    await Promise.all(Object.keys(kit).map(async (name) => {
       const layers = await Promise.all(
-        DRUM_KIT[name].map(async (takes) => {
+        kit[name].map(async (takes) => {
           const bufs = await Promise.all(
             takes.map(file =>
-              loadSample(`/samples/${file}`).catch(() => null)
+              loadSample(SAMPLE_ROOT + file).catch(() => null)
             )
           );
           return bufs.filter(Boolean);
@@ -666,18 +672,29 @@ export function createAudioEngine(callbacks = {}) {
       if (nonEmpty.length) samples.drums[name] = nonEmpty;
     }));
     const loaded = Object.keys(samples.drums);
-    console.log(loaded.length ? `[JamPal] Drums loaded: ${loaded.join(', ')} ✓` : '[JamPal] No drum samples — using synthesis');
+    console.log(loaded.length ? `[JamPal] ${genre} drums loaded: ${loaded.join(', ')} ✓` : '[JamPal] No drum samples — using synthesis');
 
-    // bass multisample — keyed by MIDI note; missing notes just don't load
+    // bass multisample — samples.bass[midi] = layers[] of takes[], same shape
+    // as the drum kit: velocity layers soft → loud, each a round-robin of takes.
+    // Missing files are dropped; a note with nothing loaded just isn't a
+    // candidate (nearestSampleMidi skips it), and an empty kit falls back to synth.
     samples.bass = {};
-    const bassResults = await Promise.allSettled(
-      BASS_SAMPLE_MIDI.map(m => loadSample(`/samples/bass-${m}.wav`))
-    );
-    bassResults.forEach((r, i) => {
-      if (r.status === 'fulfilled') samples.bass[BASS_SAMPLE_MIDI[i]] = r.value;
-    });
+    await Promise.all(Object.entries(BASS_NOTES).map(async ([note, midi]) => {
+      const layers = await Promise.all(
+        BASS_VELOCITY_LAYERS.map(async (dyn) => {
+          const bufs = await Promise.all(
+            BASS_ROUND_ROBINS.map(rr =>
+              loadSample(`${SAMPLE_ROOT}bass/${note}_${dyn}_${rr}.ogg`).catch(() => null)
+            )
+          );
+          return bufs.filter(Boolean);
+        })
+      );
+      const nonEmpty = layers.filter(l => l.length);
+      if (nonEmpty.length) samples.bass[midi] = nonEmpty;
+    }));
     const nBass = Object.keys(samples.bass).length;
-    console.log(nBass ? `[JamPal] Loaded ${nBass} bass samples ✓` : '[JamPal] No bass samples — using synth bass');
+    console.log(nBass ? `[JamPal] Loaded ${nBass} bass notes (velocity + round-robin) ✓` : '[JamPal] No bass samples — using synth bass');
   }
 
   return api;

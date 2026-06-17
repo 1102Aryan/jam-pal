@@ -75,7 +75,6 @@ export function useJamEngine({ style = 'supportive', genre = 'blues' } = {}) {
           setTimeout(() => setOnsetFlash(false), 90);
         },
       });
-      engineRef.current._deviceId = deviceId
     }
     return engineRef.current;
   }
@@ -88,7 +87,7 @@ export function useJamEngine({ style = 'supportive', genre = 'blues' } = {}) {
 
 
 
-    const ok = await engine.start(selectedDeviceId);
+    const ok = await engine.start(selectedDeviceId, genre);
     if (!ok) {
       engineRef.current = null;
       setMicBlocked(true);
@@ -113,7 +112,7 @@ export function useJamEngine({ style = 'supportive', genre = 'blues' } = {}) {
     // count-in fires immediately so the user gets the pulse
     setCountIn(3);
     setIsCountingIn(true);
-  }, [selectedDeviceId]);
+  }, [selectedDeviceId, genre]);
 
   const stopMic = useCallback(() => {
     setIsCountingIn(false);

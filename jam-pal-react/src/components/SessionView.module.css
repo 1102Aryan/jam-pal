@@ -231,7 +231,7 @@
   box-shadow: 0 0 8px var(--accent);
 }
 
-/* Jam mode — big centred announcement that pops in like the count-in */
+/* Jam mode — big centred announcement */
 .modeOverlay {
   position: fixed;
   inset: 0;
@@ -352,10 +352,7 @@
   position: relative;
 }
 
-/* Transport cluster — flex row, centred between leftStack & rightControls.
-   The two side groups share an identical min-width so the play button always
-   lands at the exact centre (= ring centre above), regardless of how many
-   buttons sit on each side. */
+/* Transport cluster */
 .transport {
   display: flex;
   align-items: center;

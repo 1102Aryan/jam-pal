@@ -90,11 +90,23 @@ export const BLUES_HAT_POOL = [
 export const BLUES_BAR_DYNAMICS =
   [1.0, 0.97, 1.0, 1.02, 1.03, 1.03, 1.0, 1.0, 1.08, 1.06, 1.0, 1.05];
 
-// Bass multisample manifest — MIDI note numbers expected as
-// /samples/bass-<midi>.wav. These 7 (every major third, C2–C4) keep repitching
-// to ≤±2 semitones. For pristine quality record the full chromatic range and
-// use: Array.from({ length: 25 }, (_, i) => 36 + i)  // C2..C4
-export const BASS_SAMPLE_MIDI = [36, 40, 44, 48, 52, 56, 60];
+// Bass multisample — real recorded notes with velocity LAYERS (soft → loud)
+// and round-robin TAKES, mirroring the drum-kit structure below. Files live in
+// /samples/bass/ named <note><octave>_<dyn>_rr<n>.ogg (e.g. a2_ff_rr3.ogg).
+//
+// Only octaves 2–3 are listed: the bass line never plays above ~Gb3 (the root
+// sits at C2–B2 and patterns reach the fifth at most — see genres.js), so the
+// library's octave-4/5 notes would be dead weight. Notes are spaced ~a minor
+// third apart, so any target repitches by ≤1.5 semitones.
+//
+// We load 3 of the 4 recorded dynamics (ff omitted to keep the download light)
+// and 2 of the 4 round-robins — ~32 files (~4 MB) instead of the full 224.
+export const BASS_VELOCITY_LAYERS = ['pp', 'p', 'f']; // soft → loud
+export const BASS_ROUND_ROBINS    = ['rr1', 'rr2'];
+export const BASS_NOTES = {        // filename note → MIDI number
+  db2: 37, e2: 40, gb2: 42, a2: 45,
+  c3:  48, eb3: 51, gb3: 54, a3: 57,
+};
 
 // Drum kit manifest. Each drum maps to an array of velocity LAYERS ordered
 // soft → loud; each layer is an array of round-robin TAKES (filenames in
@@ -107,12 +119,61 @@ export const BASS_SAMPLE_MIDI = [36, 40, 44, 48, 52, 56, 60];
 //   velocity + round-robin:  snare: [['snare-soft-1.wav','snare-soft-2.wav'],
 //                                    ['snare-hard-1.wav','snare-hard-2.wav']]
 // Only list files you actually have, so nothing 404s.
+// Acoustic kit chosen from the /samples/drums/ palette. The two "acousticNN"
+// variants of each drum are used as round-robin takes (they're different
+// recordings, not soft/loud layers), so consecutive hits aren't bit-identical.
 export const DRUM_KIT = {
-  kick:    [['kick.wav']],
-  snare:   [['snare.wav']],
-  hihat:   [['hihat.wav']],
-  openhat: [['openhat.wav']],
-  crash:   [['crash.wav']],
+  kick:    [['drums/kick-acoustic01.ogg',  'drums/kick-acoustic02.ogg']],
+  snare:   [['drums/snare-acoustic01.ogg', 'drums/snare-acoustic02.ogg']],
+  hihat:   [['drums/hihat-acoustic01.ogg', 'drums/hihat-acoustic02.ogg']],
+  openhat: [['drums/openhat-acoustic01.ogg']],
+  crash:   [['drums/crash-acoustic.ogg']],
+};
+
+// Per-genre drum kits — each picks different samples from /samples/drums/ so the
+// genres actually sound different. Falls back to DRUM_KIT if a genre is absent.
+export const GENRE_KITS = {
+  // warm acoustic; a ride cymbal stands in for the "hat" → classic shuffle ride
+  blues: {
+    kick:    [['drums/kick-acoustic01.ogg',  'drums/kick-acoustic02.ogg']],
+    snare:   [['drums/snare-acoustic01.ogg', 'drums/snare-acoustic02.ogg']],
+    hihat:   [['drums/ride-acoustic01.ogg',  'drums/ride-acoustic02.ogg']],
+    openhat: [['drums/openhat-acoustic01.ogg']],
+    crash:   [['drums/crash-acoustic.ogg']],
+  },
+  // bigger, punchier acoustic
+  rock: {
+    kick:    [['drums/kick-heavy.ogg',       'drums/kick-acoustic02.ogg']],
+    snare:   [['drums/snare-acoustic02.ogg', 'drums/snare-big.ogg']],
+    hihat:   [['drums/hihat-acoustic01.ogg', 'drums/hihat-acoustic02.ogg']],
+    openhat: [['drums/openhat-acoustic01.ogg']],
+    crash:   [['drums/crash-acoustic.ogg']],
+  },
+  // tight, clean, electronic-tinged; clap layered with the snare
+  pop: {
+    kick:    [['drums/kick-big.ogg',      'drums/kick-tight.ogg']],
+    snare:   [['drums/snare-punch.ogg',   'drums/clap-fat.ogg']],
+    hihat:   [['drums/hihat-digital.ogg', 'drums/hihat-electro.ogg']],
+    openhat: [['drums/openhat-tight.ogg']],
+    crash:   [['drums/crash-808.ogg']],
+  },
+  // huge, washy, roomy
+  shoegaze: {
+    kick:    [['drums/kick-deep.ogg',  'drums/kick-heavy.ogg']],
+    snare:   [['drums/snare-big.ogg',  'drums/snare-modular.ogg']],
+    hihat:   [['drums/hihat-acoustic01.ogg']],
+    openhat: [['drums/openhat-acoustic01.ogg']],
+    crash:   [['drums/crash-acoustic.ogg', 'drums/crash-noise.ogg']],
+  },
+};
+
+// Per-genre bus FX — room size/decay + how much reverb is mixed in, so each
+// style sits in its own space (tight rock vs. cavernous shoegaze).
+export const GENRE_FX = {
+  blues:    { roomSeconds: 0.9, roomDecay: 3.0, reverbSend: 0.12 },
+  rock:     { roomSeconds: 0.6, roomDecay: 2.6, reverbSend: 0.07 },
+  pop:      { roomSeconds: 0.5, roomDecay: 2.2, reverbSend: 0.09 },
+  shoegaze: { roomSeconds: 2.8, roomDecay: 2.2, reverbSend: 0.34 },
 };
 
 // ---- Performance / humanization ----
