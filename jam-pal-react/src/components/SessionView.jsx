@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import styles from './SessionView.module.css';
+import jamPalLogo from '../assets/jam_pal.svg';
 
 const SHORTCUTS = [
   { keys: ['Space'], label: 'Play / pause the band' },
@@ -277,7 +278,7 @@ function SessionView({
       <div className={styles.topBar}>
         <div className={styles.logoItem}>
           <div className={`${styles.statusDot} ${listening ? styles.statusDotActive : ''}`} />
-          <span className={styles.logo}>Jam Pal</span>
+          <img src={jamPalLogo} alt="Jam Pal" className={styles.logo} />
         </div>
 
         <div className={styles.accountSection}>

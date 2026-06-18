@@ -1,5 +1,7 @@
 <div align="center">
 
+<img src="jam-pal-react/public/jam_pal.svg" alt="Jam Pal Logo" width="100" />
+
 # Jam Pal
 
 Drum and bass to accompany your guitar jam
