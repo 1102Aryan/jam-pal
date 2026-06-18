@@ -63,6 +63,11 @@ Here are the features implemented:
 - Solo space - the band mutes and allows you to lead/solo.
 - Call and response - the band plays a phrase, leaves a gap for you to answer.
 - Option to record your jam session
+- Real instrument sampling and FX
+- Metronome + Count-in
+- Looper
+- Volume control for each instrument
+- Time feedback meter
 
 
 ## Status 
@@ -74,6 +79,13 @@ The current application is a work in progress and will include these specific fe
 - Specific animations
 - AI analysis 
 - Time signature modifications
+
+## Acknowledgements
+
+
+## License
+
+Distributed under the MIT License. See the `LICENSE` file for more information.
 
 ## Contributing
 
