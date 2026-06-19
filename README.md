@@ -56,6 +56,8 @@ View the website through this [link](https://1102aryan.github.io/jam-pal/).
   <img src="./images/screenshots/jam_pal_demo.gif" alt="App Demo" width="800"/>
 </div>
 
+## Keyboard Shortcuts
+
 ## Current Features
 Here are the features implemented:
 - Option between Blues, Pop, Rock, Shoegaze to pick from.
@@ -81,7 +83,7 @@ The current application is a work in progress and will include these specific fe
 - Time signature modifications
 
 ## Acknowledgements
-
+- Vectors and icons by <a href="https://www.svgrepo.com" target="_blank">SVG Repo</a>
 
 ## License
 

@@ -11,7 +11,7 @@ function App() {
   const [style, setStyle] = useState('supportive');
   const [timeSig, setTimeSig] = useState('4/4');
 
-  const engine = useJamEngine({ style, genre });
+  const engine = useJamEngine({ style, genre, timeSig });
 
   // end the jam (stopping the band if it's running) and show the report
   const endSession = () => {
@@ -37,7 +37,7 @@ function App() {
   }
 
   if (view === 'report') {
-    return <ReportView report={engine.sessionReport} onDone={() => setView('setup')} />;
+    return <ReportView report={engine.sessionReport} timeSig={timeSig} onDone={() => setView('setup')} />;
   }
 
   return (

@@ -1,4 +1,4 @@
-import { LOOKAHEAD_MS, SCHEDULE_AHEAD } from './config.js';
+import { LOOKAHEAD_MS, SCHEDULE_AHEAD, METERS } from './config.js';
 
 // The scheduler is a clock + renderer: it asks the brain what to play at each
 // grid step and turns the returned events into sound. It knows nothing about
@@ -173,7 +173,7 @@ function playBassSynth(audioCtx, dest, noiseBuffer, targetFreq, ev, time) {
 // scheduler factory 
 // engine = object returned by createAudioEngine
 // brain  = object implementing the bandBrain interface (see bandBrain.js)
-export function createScheduler(engine, brain) {
+export function createScheduler(engine, brain, meter = METERS['4/4']) {
   let playing        = false;
   let current16th    = 0;
   let nextNoteTime   = 0;
@@ -312,8 +312,8 @@ export function createScheduler(engine, brain) {
       handleLoopBar(bar);
     }
 
-    // tell the engine when the player will hear each quarter beat (timing feedback)
-    if (step % 4 === 0) engine.registerBeat(time + engine.getOutputLatency());
+    // tell the engine when the player will hear each beat (timing feedback)
+    if (step % meter.stepsPerBeat === 0) engine.registerBeat(time + engine.getOutputLatency());
 
     const beatSec = 60 / engine.getSmoothedBPM();
     const events  = brain.step({
@@ -342,7 +342,9 @@ export function createScheduler(engine, brain) {
     while (nextNoteTime < audioCtx.currentTime + SCHEDULE_AHEAD) {
       scheduleStep(current16th, nextNoteTime);
       nextNoteTime += stepAdvance(current16th);
-      current16th = (current16th + 1) % 16;
+      current16th = (current16th + 1) % meter.stepsPerBar;
+      // at each bar line, ease the grid toward the player's actual placement
+      if (current16th === 0) nextNoteTime += engine.getPhaseCorrection();
     }
     schedulerTimer = setTimeout(schedulerLoop, LOOKAHEAD_MS);
   }
@@ -358,7 +360,7 @@ export function createScheduler(engine, brain) {
         noteQueue.shift();
       }
       if (step !== -1) {
-        const q = Math.floor(step / 4);
+        const q = Math.floor(step / meter.stepsPerBeat);
         if (q !== lastQuarterLit) {
           beatChangeCb?.(q);
           lastQuarterLit = q;
@@ -382,7 +384,8 @@ export function createScheduler(engine, brain) {
       brain.reset();
       noteQueue.length = 0;
       lastQuarterLit   = -1;
-      nextNoteTime     = audioCtx.currentTime + 0.1;
+      // come in on the player's pulse if we can read it, else just start now
+      nextNoteTime     = engine.getEntryBeatTime() ?? (audioCtx.currentTime + 0.1);
       schedulerLoop();
       beatRafId = requestAnimationFrame(drawBeats);
     },

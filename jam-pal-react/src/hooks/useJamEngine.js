@@ -4,8 +4,9 @@ import { createScheduler } from '../engine/scheduler.js';
 import { createBrain } from '../engine/bandBrain.js';
 import { createJamDirector } from '../engine/jamDirector.js';
 import { createSessionStats } from '../engine/sessionStats.js';
+import { METERS } from '../engine/config.js';
 
-export function useJamEngine({ style = 'supportive', genre = 'blues' } = {}) {
+export function useJamEngine({ style = 'supportive', genre = 'blues', timeSig = '4/4' } = {}) {
   const [listening,    setListening]    = useState(false);
   const [bandPlaying,  setBandPlaying]  = useState(false);
   const [bandReady,    setBandReady]    = useState(false); 
@@ -40,9 +41,11 @@ export function useJamEngine({ style = 'supportive', genre = 'blues' } = {}) {
   const directorRef  = useRef(null);
   const statsRef     = useRef(null);
   const styleRef     = useRef(style);
+  const timeSigRef   = useRef(timeSig);
   const drumVolRef   = useRef(0.85);
   const bassVolRef   = useRef(1.0);
   useEffect(() => { styleRef.current = style; }, [style]);
+  useEffect(() => { timeSigRef.current = timeSig; }, [timeSig]);
 
   const setDrumVolume = useCallback((v) => {
     drumVolRef.current = v;
@@ -60,7 +63,7 @@ export function useJamEngine({ style = 'supportive', genre = 'blues' } = {}) {
       engineRef.current = createAudioEngine({
         onRms:             setRms,
         onBpm: (bpm) => { setBpm(bpm); statsRef.current?.addBpm(bpm); },
-        onKey:             setMusicKey,
+        onKey: (k) => { setMusicKey(k); statsRef.current?.addKey(k); },
         onEnergy: (e) => { setEnergy(e); statsRef.current?.addEnergy(e); },
         onStatus:          setStatus,
         onListeningChange: setListening,
@@ -84,8 +87,8 @@ export function useJamEngine({ style = 'supportive', genre = 'blues' } = {}) {
     setSessionReport(null);
     statsRef.current = createSessionStats();
     const engine = ensureEngine();
-
-
+    const meter = METERS[timeSigRef.current] ?? METERS['4/4'];
+    engine.setMeter(meter);
 
     const ok = await engine.start(selectedDeviceId, genre);
     if (!ok) {
@@ -97,7 +100,7 @@ export function useJamEngine({ style = 'supportive', genre = 'blues' } = {}) {
     engine.setDrumVolume(drumVolRef.current);
     engine.setBassVolume(bassVolRef.current);
     if (!schedulerRef.current) {
-      const sched = createScheduler(engine, createBrain({ genre }));
+      const sched = createScheduler(engine, createBrain({ genre, timeSig: timeSigRef.current }), meter);
       schedulerRef.current = sched;
 
       const director = createJamDirector({

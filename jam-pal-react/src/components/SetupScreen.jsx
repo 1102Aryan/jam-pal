@@ -99,7 +99,9 @@ function SetupScreen({
         >
           <option value="4/4">4 / 4</option>
           <option value="3/4">3 / 4</option>
+          <option value="2/4">2 / 4</option>
           <option value="6/8">6 / 8</option>
+          <option value="12/8">12 / 8</option>
         </select>
       </div>
 

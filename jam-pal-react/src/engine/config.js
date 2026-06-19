@@ -17,6 +17,22 @@ export const TEMPO_LOOKAHEAD_BEATS = 1.0;
 export const LOOKAHEAD_MS    = 25;
 export const SCHEDULE_AHEAD  = 0.1;   // seconds
 
+// Time signatures. The grid is always sixteenth-notes; a meter just sets how
+// many steps make a bar and how they group into displayed beats.
+//   stepsPerBar  : grid steps in one bar (16th notes)
+//   stepsPerBeat : steps per displayed beat / metronome click
+//   beats        : beats shown per bar  (= stepsPerBar / stepsPerBeat)
+//   accentBeats  : beat indices the metronome accents (the bar's strong pulses)
+// 6/8 is compound: 6 eighth-note pulses (2 steps each), felt in 2 (accents 1 & 4).
+export const METERS = {
+  '4/4':  { stepsPerBar: 16, stepsPerBeat: 4, beats: 4,  accentBeats: [0] },
+  '3/4':  { stepsPerBar: 12, stepsPerBeat: 4, beats: 3,  accentBeats: [0] },
+  '2/4':  { stepsPerBar: 8,  stepsPerBeat: 4, beats: 2,  accentBeats: [0] },
+  '6/8':  { stepsPerBar: 12, stepsPerBeat: 2, beats: 6,  accentBeats: [0, 3] },
+  // 12/8 compound quadruple — 4 dotted-quarter pulses (slow-blues shuffle feel)
+  '12/8': { stepsPerBar: 24, stepsPerBeat: 2, beats: 12, accentBeats: [0, 3, 6, 9] },
+};
+
 // Latency & feedback rejection
 // The band's sound leaves the speakers ~outputLatency after it's scheduled,
 // reaches the mic, and shows up in the analysis ~inputLatency later. We know
@@ -167,13 +183,18 @@ export const GENRE_KITS = {
   },
 };
 
-// Per-genre bus FX — room size/decay + how much reverb is mixed in, so each
-// style sits in its own space (tight rock vs. cavernous shoegaze).
+// Per-genre bus FX — gives each style its own production vibe, not just a room.
+//   roomSeconds / roomDecay : reverb tail length & shape
+//   reverbSend              : how much reverb is mixed in
+//   tone                    : master high-shelf gain in dB (+ = bright/airy pop,
+//                             − = warm/dark blues & shoegaze)
+//   predelay                : seconds before the reverb hits — separates the wet
+//                             tail from the dry hit for a polished, produced feel
 export const GENRE_FX = {
-  blues:    { roomSeconds: 0.9, roomDecay: 3.0, reverbSend: 0.12 },
-  rock:     { roomSeconds: 0.6, roomDecay: 2.6, reverbSend: 0.07 },
-  pop:      { roomSeconds: 0.5, roomDecay: 2.2, reverbSend: 0.09 },
-  shoegaze: { roomSeconds: 2.8, roomDecay: 2.2, reverbSend: 0.34 },
+  blues:    { roomSeconds: 1.1, roomDecay: 3.0, reverbSend: 0.16, tone: -1.5, predelay: 0.020 }, // warm, roomy
+  rock:     { roomSeconds: 0.7, roomDecay: 2.6, reverbSend: 0.10, tone:  1.0, predelay: 0.010 }, // tight, present
+  pop:      { roomSeconds: 1.0, roomDecay: 2.0, reverbSend: 0.18, tone:  4.0, predelay: 0.025 }, // bright, airy, spacious
+  shoegaze: { roomSeconds: 2.8, roomDecay: 2.4, reverbSend: 0.38, tone: -2.0, predelay: 0.040 }, // dark, cavernous wash
 };
 
 // ---- Performance / humanization ----
@@ -184,7 +205,7 @@ export const PHRASE_BARS       = 4;      // fill on the last bar of each phrase
 
 // Intensity tiers — evaluated only at bar boundaries, with hysteresis so the
 // band doesn't flap between levels.
-export const TIER_UP   = [0.40, 0.72];   // energy to move 0→1, 1→2
+export const TIER_UP   = [0.40, 0.82];   // energy to move 0→1, 1→2 (busy 16ths kept rare)
 export const TIER_DOWN = [0.28, 0.58];   // energy to move 1→0, 2→1
 export const SPARSE_ONSETS = 2;          // player onsets/bar at or below this → band thins out
 
@@ -198,8 +219,11 @@ export const PERSONALITY_RANGES = {
   shuffle:    [0.62, 0.68],    // where the shuffle note sits in the beat
   layback:    [0.004, 0.008],  // seconds the backbeat drags behind the grid
   fillProb:   [0.65, 1.0],     // chance a phrase ends with a fill
+  midFillProb:[0.04, 0.10],    // chance of a surprise fill mid-phrase
   ghostProb:  [0.25, 0.45],    // ghost-snare density
   gainJitter: [0.08, 0.15],    // per-hit velocity looseness
+  bassRest:   [0.06, 0.16],    // chance an off-beat bass note is left out (space)
+  bassOctave: [0.05, 0.14],    // chance an off-beat root note jumps up an octave
 };
 
 // Fills: replace the normal pattern over beat 4 (steps 12-15) of the last bar

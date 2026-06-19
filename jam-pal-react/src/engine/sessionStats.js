@@ -28,6 +28,7 @@ export function createSessionStats() {
 
   const timing  = []; // { t, offsetMs }
   const chords  = []; // { t, label }
+  const keys    = []; // { t, label }
   const bpms    = []; // { t, bpm }
   const energy  = []; // { t, e }
   let lastEnergyT = -Infinity;
@@ -39,6 +40,11 @@ export function createSessionStats() {
     addChord(label) {
       if (label && (chords.length === 0 || chords[chords.length - 1].label !== label)) {
         chords.push({ t: now(), label });
+      }
+    },
+    addKey(label) {
+      if (label && (keys.length === 0 || keys[keys.length - 1].label !== label)) {
+        keys.push({ t: now(), label });
       }
     },
     addBpm(bpm) {
@@ -59,6 +65,7 @@ export function createSessionStats() {
         timing: summarizeTiming(timing),
         tempo:  summarizeTempo(bpms),
         chords: summarizeChords(chords),
+        key:    summarizeKey(keys),
         energy: summarizeEnergy(energy),
       };
     },
@@ -114,6 +121,18 @@ function summarizeChords(entries) {
     sequence:   seq.slice(0, 64),                                  // capped for readability
     mostPlayed: unique.reduce((a, b) => (counts[b] > counts[a] ? b : a), unique[0]),
   };
+}
+
+// the key the player spent most of the jam in (key detection drifts, so the
+// mode-by-time-weighted winner is steadier than just the last reading)
+function summarizeKey(entries) {
+  if (!entries.length) return null;
+  const held = {};
+  for (let i = 0; i < entries.length; i++) {
+    const next = entries[i + 1]?.t ?? entries[i].t + 1;
+    held[entries[i].label] = (held[entries[i].label] || 0) + (next - entries[i].t);
+  }
+  return Object.keys(held).reduce((a, b) => (held[b] > held[a] ? b : a));
 }
 
 function summarizeEnergy(entries) {

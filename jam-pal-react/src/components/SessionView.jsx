@@ -5,12 +5,15 @@ import jamPalLogo from '../assets/jam_pal.svg';
 const SHORTCUTS = [
   { keys: ['Space'], label: 'Play / pause the band' },
   { keys: ['R'],     label: 'Start / stop recording' },
+  { keys: ['M'],     label: 'Metronome on / metronome off'},
   { keys: ['L'],     label: 'Arm / clear the looper' },
+  { keys: ['U'],     label: 'lock bpm / unlock bpm'},
+  { keys: ['S'],     label: 'End session'},
   { keys: ['?'],     label: 'Show this shortcut list' },
   { keys: ['Esc'],   label: 'Close this card' },
 ];
 
-// a single vector keyboard key
+// a keyboard key
 function Kbd({ children }) {
   return <span className={styles.kbd}>{children}</span>;
 }
@@ -45,8 +48,6 @@ const MODE_LABELS = {
   call:      'Listen…',
   response:  'Your turn!',
 };
-
-const BEATS = [0, 1, 2, 3];
 
 function PlayIcon() {
   return (
@@ -84,7 +85,7 @@ function StopIcon() {
 function DrumIcon() {
   // snare drum with sticks
   return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.0" strokeLinecap="round" strokeLinejoin="round">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="0.6" strokeLinecap="round" strokeLinejoin="round">
       <ellipse cx="12" cy="10" rx="8" ry="3" />
       <path d="M4 10v5c0 1.66 3.58 3 8 3s8-1.34 8-3v-5" />
       <path d="M4 13c1.6 1.2 4.5 2 8 2s6.4-.8 8-2" />
@@ -192,6 +193,9 @@ function SessionView({
   const ringRef  = useRef(null);
   const [showShortcuts, setShowShortcuts] = useState(false);
 
+  // beat dots follow the time signature: 4/4 → 4, 3/4 → 3, 6/8 → 6
+  const beatCount = Number((timeSig ?? '4/4').split('/')[0]) || 4;
+
   // pad history to 4 slots, newest on the right
   const slots = [...EMPTY_SLOTS];
   chordHistory.slice(-4).forEach((k, i) => {
@@ -233,6 +237,19 @@ function SessionView({
         e.preventDefault();
         onToggleLoop();
       }
+      if (e.code === 'KeyS') {        // End session
+        e.preventDefault();
+        onEndSession();
+      }
+      if (e.code === 'KeyU') {
+        e.preventDefault();
+        onToggleLock();
+      }
+      if (e.code === 'keyM') {
+        e.preventDefault();
+        onToggleMetronome
+      }
+
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
@@ -312,7 +329,7 @@ function SessionView({
             </div>
 
             <div className={styles.beats}>
-              {BEATS.map(i => (
+              {Array.from({ length: beatCount }, (_, i) => (
                 <div
                   key={i}
                   className={`${styles.beatDot} ${activeBeat === i ? styles.beatDotOn : ''}`}

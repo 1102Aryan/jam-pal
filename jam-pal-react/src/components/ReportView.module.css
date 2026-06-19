@@ -72,9 +72,17 @@
   color: var(--muted);
 }
 
-/* ── Progression strip ── */
+/* ── Chord chart ── */
 .progression {
   margin-top: 26px;
+}
+
+.chartHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
 }
 
 .progressionLabel {
@@ -84,20 +92,59 @@
   color: var(--muted);
 }
 
-.chordStrip {
-  margin-top: 12px;
+.exportBtns {
   display: flex;
-  flex-wrap: wrap;
   gap: 8px;
 }
 
-.chordChip {
-  padding: 5px 12px;
-  border-radius: 999px;
-  border: 1px solid rgba(155, 111, 255, 0.25);
-  font-size: 13px;
+.exportBtn {
+  padding: 6px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: 12px;
   font-weight: 500;
+  cursor: pointer;
+  transition: color 150ms, border-color 150ms, background 150ms;
+}
+
+.exportBtn:hover {
   color: var(--text);
+  border-color: rgba(155, 111, 255, 0.4);
+  background: rgba(155, 111, 255, 0.08);
+}
+
+.chartMeta {
+  margin-top: 10px;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.chartBars {
+  margin-top: 12px;
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 1px;
+  background: var(--line);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+.bar {
+  background: var(--panel);
+  padding: 20px 6px;
+  text-align: center;
+  font-size: 19px;
+  font-weight: 600;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+
+.barEmpty {
+  color: transparent;
 }
 
 .note {

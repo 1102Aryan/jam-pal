@@ -5,7 +5,7 @@ import {
   DEFAULT_OUTPUT_LATENCY, INPUT_LATENCY_EST, FEEDBACK_GUARD, BAND_HIT_TTL,
   CHORD_HOLD_SEC, CHORD_HOLD_MIN, NOTE_NAMES,
   TIMING_REFRACTORY, TIMING_WINDOW, TIMING_TIGHT_SEC, TIMING_ONBEAT_FRAC,
-  TEMPO_LOOKAHEAD_BEATS,
+  TEMPO_LOOKAHEAD_BEATS, METERS,
 } from './config.js';
 import {
   computeSpectralFlux, updateChroma, detectKey, detectChord, updateTempo,
@@ -85,6 +85,8 @@ function makeRoomImpulse(ctx, seconds, decay) {
 export function createAudioEngine(callbacks = {}) {
   let audioCtx    = null;
   let analyser    = null;
+  let keyAnalyser = null;   // higher-resolution FFT dedicated to chroma/key
+  let keyFreqBuf  = null;
   let micStream   = null;
   let noiseBuffer = null;
   let listening   = false;
@@ -137,6 +139,7 @@ export function createAudioEngine(callbacks = {}) {
   let isMetronomeOn    = false;
   let nextClickTime    = 0;
   let metronomeBeat    = 0;
+  let meter            = METERS['4/4'];  // set per session from the chosen time sig
 
   let recorderNode     = null;  // taps band + mic, accumulates PCM while recording
   let recording        = false;
@@ -147,6 +150,13 @@ export function createAudioEngine(callbacks = {}) {
   const beatTimes      = [];   // times the player *hears* each quarter beat
   const timingOffsets  = [];   // recent signed player-vs-beat offsets (seconds)
   let lastTimingOnset  = -1;
+  // phase lock: track the player's placement so the band can sit WITH them.
+  // phaseMean is the slow baseline (the constant latency/reaction lag — never
+  // chased, or the grid would run away); phaseDev is the transient slip the band
+  // gently follows.
+  let phaseMean        = 0;
+  let phaseDev         = 0;
+  let phaseInit        = false;
 
   // fire onChord only when the displayed chord actually changes
   function emitChord() {
@@ -177,6 +187,12 @@ export function createAudioEngine(callbacks = {}) {
 
     timingOffsets.push(offset);
     if (timingOffsets.length > TIMING_WINDOW) timingOffsets.shift();
+
+    // phase lock: learn the slow baseline, then track only the deviation from it
+    // (zero-mean → the per-bar nudge can't accumulate/run away)
+    if (!phaseInit) { phaseMean = offset; phaseInit = true; }
+    else            { phaseMean += 0.02 * (offset - phaseMean); }
+    phaseDev += 0.30 * ((offset - phaseMean) - phaseDev);
 
     const avg   = timingOffsets.reduce((a, b) => a + b, 0) / timingOffsets.length;
     const tight = timingOffsets.filter(o => Math.abs(o) <= TIMING_TIGHT_SEC).length / timingOffsets.length;
@@ -240,6 +256,9 @@ export function createAudioEngine(callbacks = {}) {
       metroVolume = v;
       if (metroBus) metroBus.gain.value = v;
     },
+
+    // set the time signature for this session (clicks, accents, beat grouping)
+    setMeter(m) { meter = m || METERS['4/4']; },
 
     // ---- tempo lock ----
     // Pin the band tempo to whatever it is right now so it stops auto-following
@@ -324,6 +343,26 @@ export function createAudioEngine(callbacks = {}) {
       if (detectedBPM !== null) smoothedBPM = detectedBPM;
     },
 
+    // entry phase: project the player's pulse forward so the band's first
+    // downbeat lands ON their beat — it comes in *with* them, not at a random
+    // phase. Returns an audioCtx time, or null to fall back to "start now".
+    getEntryBeatTime() {
+      if (!audioCtx || lastOnsetTime < 0 || detectedBPM === null) return null;
+      const period = 60 / smoothedBPM;
+      const ahead  = audioCtx.currentTime + 0.12;   // a little lead for scheduling
+      let t = lastOnsetTime;
+      while (t < ahead) t += period;
+      return t;
+    },
+
+    // gentle, leaky, clamped phase nudge the scheduler applies each bar so the
+    // band tracks the player's timing slips while it plays (steady players only —
+    // chasing a wobbling beginner would feel like seasickness)
+    getPhaseCorrection() {
+      if (!bandPlaying || bpmLocked || !phaseInit || smoothedWobble > 0.35) return 0;
+      return Math.max(-0.008, Math.min(0.008, 0.25 * phaseDev));
+    },
+
     // called every scheduler tick so the band tempo glides toward the player's
     // *forecast* tempo (anticipation), not the laggy past tempo; once playing it
     // follows less eagerly — holding the pocket while still leaning the right way
@@ -375,7 +414,7 @@ export function createAudioEngine(callbacks = {}) {
       const bassShelf = audioCtx.createBiquadFilter();
       bassShelf.type = 'lowshelf';
       bassShelf.frequency.value = 140;
-      bassShelf.gain.value = 5;          // +5 dB low end for weight
+      bassShelf.gain.value = 2.5;        // gentle low-end lift (was +5 dB — boomy)
       const bassComp = audioCtx.createDynamicsCompressor();
       bassComp.threshold.value = -24;
       bassComp.knee.value      = 18;
@@ -392,15 +431,42 @@ export function createAudioEngine(callbacks = {}) {
       comp.ratio.value     = 4;
       comp.attack.value    = 0.003;
       comp.release.value   = 0.15;
+
+      // per-session room: jitter the genre's room around its setting so the
+      // space sounds a little different every play, never identical
+      const jit  = (v, amt) => v * (1 + (Math.random() * 2 - 1) * amt);
       const verb = audioCtx.createConvolver();
-      verb.buffer = makeRoomImpulse(audioCtx, fx.roomSeconds, fx.roomDecay); // per-genre space
+      verb.buffer = makeRoomImpulse(audioCtx, jit(fx.roomSeconds, 0.25), jit(fx.roomDecay, 0.2));
       const send = audioCtx.createGain();
-      send.gain.value = fx.reverbSend;
-      bandBus.connect(comp);
-      comp.connect(audioCtx.destination);
+      send.gain.value = jit(fx.reverbSend, 0.2);
+
+      // brickwall limiter on the master so loud hits (crashes) can't distort
+      const limiter = audioCtx.createDynamicsCompressor();
+      limiter.threshold.value = -2;
+      limiter.knee.value      = 0;
+      limiter.ratio.value     = 20;
+      limiter.attack.value    = 0.002;
+      limiter.release.value   = 0.12;
+
+      // master tone: a per-genre high-shelf gives each style its brightness
+      // (pop airy, rock present, blues/shoegaze warm) ahead of the glue comp
+      const toneShelf = audioCtx.createBiquadFilter();
+      toneShelf.type = 'highshelf';
+      toneShelf.frequency.value = 3200;
+      toneShelf.gain.value = fx.tone ?? 0;
+
+      // pre-delay separates the wet reverb from the dry hit for a produced feel
+      const predelay = audioCtx.createDelay(0.1);
+      predelay.delayTime.value = fx.predelay ?? 0.015;
+
+      bandBus.connect(toneShelf);
+      toneShelf.connect(comp);
+      comp.connect(limiter);             // dry path
       comp.connect(send);
-      send.connect(verb);
-      verb.connect(audioCtx.destination);
+      send.connect(predelay);
+      predelay.connect(verb);
+      verb.connect(limiter);             // wet (reverb) path
+      limiter.connect(audioCtx.destination);
 
       // shared white-noise buffer for snare + hat synthesis
       const len = Math.floor(audioCtx.sampleRate * 0.2);
@@ -410,9 +476,16 @@ export function createAudioEngine(callbacks = {}) {
 
       const source = audioCtx.createMediaStreamSource(micStream);
       analyser = audioCtx.createAnalyser();
-      analyser.fftSize = 2048;
+      analyser.fftSize = 2048;             // fast time response for onset/tempo
       analyser.smoothingTimeConstant = 0.3;
       source.connect(analyser);
+
+      // a separate, higher-resolution FFT for chroma/key — ~5.4 Hz bins resolve
+      // low notes a semitone apart, which 2048 can't (it would blur the bass)
+      keyAnalyser = audioCtx.createAnalyser();
+      keyAnalyser.fftSize = 8192;
+      keyAnalyser.smoothingTimeConstant = 0.5;
+      source.connect(keyAnalyser);
 
       // recording tap: sum the band master (dry + reverb) and the mic into a
       // script processor that accumulates raw PCM while recording (→ WAV)
@@ -423,12 +496,12 @@ export function createAudioEngine(callbacks = {}) {
         recLeft.push(ib.getChannelData(0).slice());
         recRight.push(ib.getChannelData(ib.numberOfChannels > 1 ? 1 : 0).slice());
       };
-      comp.connect(recorderNode);
-      verb.connect(recorderNode);
-      source.connect(recorderNode);
+      limiter.connect(recorderNode);     // record the limited master (band)
+      source.connect(recorderNode);      // + the mic
       recorderNode.connect(audioCtx.destination); // must be connected to run; outputs silence
 
       timeBuf = new Float32Array(analyser.fftSize);
+      keyFreqBuf = new Float32Array(keyAnalyser.frequencyBinCount);
       fluxState.freqBuf = new Float32Array(analyser.frequencyBinCount);
       fluxState.prevMag = null;
 
@@ -444,6 +517,7 @@ export function createAudioEngine(callbacks = {}) {
       chordPredictor.reset();
       smoothedEnergy = 0; bandHits.length = 0;
       beatTimes.length = 0; timingOffsets.length = 0; lastTimingOnset = -1;
+      phaseMean = 0; phaseDev = 0; phaseInit = false;
 
       listening = true;
       callbacks.onListeningChange?.(true);
@@ -471,7 +545,7 @@ export function createAudioEngine(callbacks = {}) {
       if (micStream) micStream.getTracks().forEach(t => t.stop());
       if (audioCtx)  audioCtx.close();
       Object.keys(samples).forEach(k => delete samples[k]);
-      audioCtx = analyser = micStream = noiseBuffer = bandBus = drumBus = bassBus = recorderNode = null;
+      audioCtx = analyser = keyAnalyser = keyFreqBuf = micStream = noiseBuffer = bandBus = drumBus = bassBus = recorderNode = null;
       callbacks.onListeningChange?.(false);
       callbacks.onStatus?.('Stopped.');
       callbacks.onRms?.(0);
@@ -502,7 +576,8 @@ export function createAudioEngine(callbacks = {}) {
     // track the player and not our own drums
     const bandBleed = bandPlaying && bandHitNear(now);
     if (!bandBleed) {
-      updateChroma(chromaProfile, fluxState.freqBuf, analyser, audioCtx, now, onsetGateExpiry);
+      keyAnalyser.getFloatFrequencyData(keyFreqBuf);
+      updateChroma(chromaProfile, keyFreqBuf, keyAnalyser, audioCtx, now, onsetGateExpiry);
     }
 
     if (++keyFrameCount % 30 === 0) {
@@ -623,7 +698,9 @@ export function createAudioEngine(callbacks = {}) {
       while (nextClickTime < now + lookahead) {
         const osc = metroCtx.createOscillator();
         const env = metroCtx.createGain();
-        osc.frequency.value = (metronomeBeat % 4 === 0) ? 1000 : 800;
+        // accent the bar's strong pulses (downbeat, plus the "4" in 6/8)
+        const beatInBar = metronomeBeat % meter.beats;
+        osc.frequency.value = meter.accentBeats.includes(beatInBar) ? 1000 : 800;
         env.gain.setValueAtTime(1, nextClickTime);
         env.gain.exponentialRampToValueAtTime(0.001, nextClickTime + 0.05);
         osc.connect(env);
@@ -631,7 +708,8 @@ export function createAudioEngine(callbacks = {}) {
         osc.start(nextClickTime);
         osc.stop(nextClickTime + 0.05);
 
-        nextClickTime += 60.0 / smoothedBPM;
+        // one click per displayed beat: a quarter in 4/4 & 3/4, an eighth in 6/8
+        nextClickTime += (60.0 / smoothedBPM) * (meter.stepsPerBeat / 4);
         metronomeBeat++;
       }
     }, 25);

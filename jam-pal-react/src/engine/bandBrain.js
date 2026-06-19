@@ -1,8 +1,8 @@
 import {
   HUMAN_TIME_JITTER, GHOST_SNARE_GAIN, PHRASE_BARS,
-  SPARSE_ONSETS, TIER_UP, TIER_DOWN, PERSONALITY_RANGES,
+  SPARSE_ONSETS, TIER_UP, TIER_DOWN, PERSONALITY_RANGES, METERS,
 } from './config.js';
-import { GENRE_SPECS } from './genres.js';
+import { GENRE_SPECS, METER_GROOVES } from './genres.js';
 
 // ============================================================================
 // The band "brain" decides WHAT to play. The scheduler keeps the clock and
@@ -24,8 +24,13 @@ import { GENRE_SPECS } from './genres.js';
 //             dt: seconds, slide: bool }
 // ============================================================================
 
-export function createBrain({ genre = 'rock' } = {}) {
-  return createGrooveBrain(GENRE_SPECS[genre] ?? GENRE_SPECS.rock);
+export function createBrain({ genre = 'rock', timeSig = '4/4' } = {}) {
+  const meter = METERS[timeSig] ?? METERS['4/4'];
+  const base  = GENRE_SPECS[genre] ?? GENRE_SPECS.rock;
+  // non-4/4 meters override the genre's meter-dependent patterns; 4/4 uses the
+  // genre spec untouched
+  const spec  = timeSig === '4/4' ? base : { ...base, ...METER_GROOVES[timeSig] };
+  return createGrooveBrain(spec, meter);
 }
 
 // ---- session personality (rolled once per session) ----
@@ -46,20 +51,29 @@ function pickPattern(pool, lastIdx) {
   return (idx !== 0 && idx === lastIdx) ? 0 : idx;
 }
 
-function createGrooveBrain(spec) {
+function createGrooveBrain(spec, meter) {
   const p       = rollPersonality();
   const maxTier = spec.kickPool.length - 1;
+  const spb     = meter.stepsPerBeat;            // grid steps per displayed beat
+  const lastStep    = meter.stepsPerBar - 1;     // final step of the bar
+  const lastBeatTop = meter.stepsPerBar - spb;   // first step of the bar's last beat
 
-  let tier       = 1;
+  // bass: a pool of per-bar variations (falls back to a single pattern)
+  const bassPool = spec.bass.pool ?? [spec.bass.pattern];
+
+  let tier       = 0;   // start sparse and build in, rather than slamming in
   let kickIdx    = 0;
   let hatIdx     = 0;
-  let kickPat    = spec.kickPool[1][0];
-  let hatPat     = spec.hatPool[1][0];
+  let bassIdx    = 0;
+  let kickPat    = spec.kickPool[0][0];
+  let hatPat     = spec.hatPool[0][0];
+  let bassPat    = bassPool[0];
   let fill       = null;   // fill chosen for this bar, or null
   let justFilled = false;
+  let phraseGain = 1;      // gentle crescendo across the phrase
 
   const jitter = (g)    => g * (1 + (Math.random() * 2 - 1) * p.gainJitter);
-  const loose  = (step) => step % 4 === 0 ? 0 : (Math.random() * 2 - 1) * HUMAN_TIME_JITTER;
+  const loose  = (step) => step % spb === 0 ? 0 : (Math.random() * 2 - 1) * HUMAN_TIME_JITTER;
 
   // per-bar decisions: intensity tier, pattern picks, fill choice
   function newBar({ barIdx, energy, playerOnsets }) {
@@ -72,11 +86,19 @@ function createGrooveBrain(spec) {
 
     kickIdx = pickPattern(spec.kickPool[t], kickIdx);
     hatIdx  = pickPattern(spec.hatPool[t], hatIdx);
+    bassIdx = pickPattern(bassPool, bassIdx);
     kickPat = spec.kickPool[t][kickIdx];
     hatPat  = spec.hatPool[t][hatIdx];
+    bassPat = bassPool[bassIdx];
 
-    const phraseEnd = barIdx % PHRASE_BARS === PHRASE_BARS - 1;
-    fill = (spec.fills.length && phraseEnd && Math.random() < p.fillProb)
+    // phrase shape: a gentle crescendo toward the phrase end, where a fill lands
+    // (and the occasional surprise fill mid-phrase) so the groove develops
+    const barInPhrase = barIdx % PHRASE_BARS;
+    phraseGain = 1 + 0.06 * (barInPhrase / Math.max(1, PHRASE_BARS - 1));
+    const wantFill = barInPhrase === PHRASE_BARS - 1
+      ? Math.random() < p.fillProb
+      : barIdx > 0 && Math.random() < p.midFillProb;
+    fill = (spec.fills.length && wantFill)
       ? spec.fills[Math.floor(Math.random() * spec.fills.length)]
       : null;
   }
@@ -90,9 +112,9 @@ function createGrooveBrain(spec) {
     },
 
     reset() {
-      tier = 1; fill = null; justFilled = false;
-      kickIdx = 0; hatIdx = 0;
-      kickPat = spec.kickPool[1][0]; hatPat = spec.hatPool[1][0];
+      tier = 0; fill = null; justFilled = false; phraseGain = 1;
+      kickIdx = 0; hatIdx = 0; bassIdx = 0;
+      kickPat = spec.kickPool[0][0]; hatPat = spec.hatPool[0][0]; bassPat = bassPool[0];
     },
 
     step(ctx) {
@@ -100,15 +122,15 @@ function createGrooveBrain(spec) {
       if (step === 0) newBar(ctx);
 
       const events = [];
-      const arc    = spec.barDynamics[barIdx % spec.barDynamics.length];
-      const accent = spec.accent[step % 4];
-      const inFill = fill !== null && step >= 12;
+      const arc    = spec.barDynamics[barIdx % spec.barDynamics.length] * phraseGain;
+      const accent = spec.accent[step % spb];
+      const inFill = fill !== null && step >= lastBeatTop;
 
       // crash marks the top of the phrase after a fill
       if (step === 0 && justFilled) {
         justFilled = false;
         if (spec.crashAfterFill) {
-          events.push({ kind: 'drum', drum: 'crash', gain: jitter(0.30 + 0.20 * e), dt: 0 });
+          events.push({ kind: 'drum', drum: 'crash', gain: jitter(0.20 + 0.14 * e), dt: 0 });
         }
       }
 
@@ -118,7 +140,7 @@ function createGrooveBrain(spec) {
             events.push({ kind: 'drum', drum: h.drum, gain: jitter(h.gain * (0.5 + 0.5 * e) * arc), dt: loose(step) });
           }
         }
-        if (step === 15) justFilled = true;
+        if (step === lastStep) justFilled = true;
       } else {
         if (kickPat[step]) {
           events.push({ kind: 'drum', drum: 'kick', gain: jitter((0.45 + 0.55 * e) * accent * arc), dt: loose(step) });
@@ -145,14 +167,21 @@ function createGrooveBrain(spec) {
       // bass root freq to it). 'third' resolves to the maj/min third, so a
       // wrong quality guess only colours a note — root and fifth stay safe.
       const bp = spec.bass;
-      if (step in bp.pattern) {
-        let semi = bp.pattern[step];
-        if (semi === 'third') semi = ctx.chordQuality === 'min' ? 3 : 4;
-        const isBeat  = step % 4 === 0;
-        const slide   = bp.slideSteps.includes(step);
-        const sustain = (isBeat ? bp.beatSustain : bp.offSustain) * beatSec;
-        const g = (0.28 + 0.27 * e) * (isBeat ? 1 : 0.8) * arc;
-        events.push({ kind: 'bass', semi, gain: jitter(g), sustain, dt: loose(step), slide });
+      if (step in bassPat) {
+        const isBeat = step % spb === 0;
+        // leave space: drop the odd off-beat note (downbeats always anchor)
+        if (isBeat || Math.random() >= p.bassRest) {
+          let semi = bassPat[step];
+          // octave lift on root/approach notes only — keeps the pitch inside the
+          // sampled range (fifths would repitch too far)
+          const canHop = typeof semi === 'number' && semi <= 0;
+          if (semi === 'third') semi = ctx.chordQuality === 'min' ? 3 : 4;
+          if (!isBeat && canHop && Math.random() < p.bassOctave) semi += 12;
+          const slide   = bp.slideSteps.includes(step);
+          const sustain = (isBeat ? bp.beatSustain : bp.offSustain) * beatSec;
+          const g = (0.28 + 0.27 * e) * (isBeat ? 1 : 0.8) * arc;
+          events.push({ kind: 'bass', semi, gain: jitter(g), sustain, dt: loose(step), slide });
+        }
       }
 
       return events;

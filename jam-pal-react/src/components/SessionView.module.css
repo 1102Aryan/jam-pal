@@ -15,7 +15,7 @@
 }
 
 .logo {
-  height: 90px;
+  height: 70px;
   width: auto;
   display: block;
 }
@@ -963,7 +963,7 @@
   color: var(--accent);
 }
 
-/* Mobile and Tables layout */
+/* Mobile and Tablet layout */
 @media (max-width: 768px) {
   /* Bottom bar becomes a vertical stack of three centred rows */
   .bottomBar {
@@ -990,9 +990,29 @@
     flex-wrap: wrap;
   }
 
+  /* Three-column grid keeps the play button dead-centre even when the
+     side control groups wrap onto multiple lines */
   .transport {
-    flex-wrap: wrap;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+    align-items: center;
     width: 100%;
+    gap: 12px;
+  }
+
+  .transportSide {
+    min-width: 0;
+    flex-wrap: wrap;
+  }
+
+  /* Smaller genre / style pills */
+  .chips {
+    gap: 8px;
+  }
+
+  .chip {
+    padding: 3px 10px;
+    font-size: 10px;
   }
 
   /* Timing meter: shrink the track and drop the stat below it */

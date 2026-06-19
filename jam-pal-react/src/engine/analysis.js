@@ -57,9 +57,12 @@ export function updateChroma(chromaProfile, freqBuf, analyser, audioCtx, now, on
     if (freq < 80 || freq > 1200) continue;
     if (freqBuf[bin] < -80) continue;
     const mag  = Math.pow(10, freqBuf[bin] / 20);
+    // de-emphasise higher partials so the fundamentals (the real chord tones)
+    // lead — otherwise a guitar's strong 3rd/5th harmonics skew the key
+    const w    = freq > 700 ? 700 / freq : 1;
     const midi = 69 + 12 * Math.log2(freq / 440);
     const pc   = ((Math.round(midi) % 12) + 12) % 12;
-    chromaProfile[pc] += mag;
+    chromaProfile[pc] += mag * w;
   }
 }
 
@@ -82,16 +85,37 @@ export function detectKey(chromaProfile, currentRoot, currentMode) {
   if (total < 1.0) return null;
 
   const norm = Array.from(chromaProfile, v => v / total);
-  let best = { score: -Infinity, root: 0, mode: 'minor' };
 
+  const scoreKey = (tonic, ks) => {
+    const tSum = ks.reduce((a, b) => a + b, 0);
+    const t    = ks.map(v => v / tSum);
+    const rot  = Array.from({ length: 12 }, (_, i) => t[(i - tonic + 12) % 12]);
+    return pearsonCorr(norm, rot);
+  };
+
+  // track the best major and best minor candidates separately
+  let bestMaj = { score: -Infinity, root: 0 };
+  let bestMin = { score: -Infinity, root: 0 };
   for (let tonic = 0; tonic < 12; tonic++) {
-    for (const [mode, ks] of [['major', KS_MAJOR], ['minor', KS_MINOR]]) {
-      const tSum = ks.reduce((a, b) => a + b, 0);
-      const t    = ks.map(v => v / tSum);
-      const rot  = Array.from({ length: 12 }, (_, i) => t[(i - tonic + 12) % 12]);
-      const score = pearsonCorr(norm, rot);
-      if (score > best.score) best = { score, root: tonic, mode };
-    }
+    const sMaj = scoreKey(tonic, KS_MAJOR);
+    const sMin = scoreKey(tonic, KS_MINOR);
+    if (sMaj > bestMaj.score) bestMaj = { score: sMaj, root: tonic };
+    if (sMin > bestMin.score) bestMin = { score: sMin, root: tonic };
+  }
+
+  let best = bestMaj.score >= bestMin.score
+    ? { score: bestMaj.score, root: bestMaj.root, mode: 'major' }
+    : { score: bestMin.score, root: bestMin.root, mode: 'minor' };
+
+  // Relative major/minor (e.g. C major / A minor) share all seven notes, so
+  // K-S correlation can't reliably tell them apart. When the two leaders ARE
+  // relatives and score within a hair of each other, break the tie by which
+  // tonic note the player actually emphasises.
+  if (bestMin.root === (bestMaj.root + 9) % 12 &&
+      Math.abs(bestMaj.score - bestMin.score) < 0.04) {
+    best = norm[bestMaj.root] >= norm[bestMin.root]
+      ? { score: bestMaj.score, root: bestMaj.root, mode: 'major' }
+      : { score: bestMin.score, root: bestMin.root, mode: 'minor' };
   }
 
   if (best.score < KEY_CONFIDENCE) return null;
