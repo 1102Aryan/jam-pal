@@ -339,6 +339,93 @@
   letter-spacing: 0.01em;
 }
 
+/*  Solo helper strip  */
+.soloStrip {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  padding: 10px 24px 0;
+  flex-shrink: 0;
+  flex-wrap: wrap;
+}
+
+.soloLead {
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.soloLead b {
+  color: var(--text);
+  font-weight: 600;
+}
+
+.soloNotes {
+  display: flex;
+  gap: 8px;
+}
+
+.soloNote {
+  min-width: 32px;
+  padding: 5px 10px;
+  border-radius: 8px;
+  text-align: center;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--muted);
+  background: var(--panel);
+  border: 1px solid var(--line);
+  font-variant-numeric: tabular-nums;
+  transition: color 180ms, background 180ms, box-shadow 180ms, border-color 180ms;
+}
+
+/* chord tones — the strongest notes to land on right now */
+.soloNoteTone {
+  color: #04342c;
+  background: var(--accent);
+  border-color: var(--accent);
+  box-shadow: 0 0 12px rgba(0, 212, 180, 0.45);
+}
+
+.soloScale {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.soloHint {
+  font-size: 13px;
+  color: var(--muted);
+  font-style: italic;
+}
+
+.soloToggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: 14px;
+  cursor: pointer;
+  transition: color 150ms, border-color 150ms, background 150ms;
+}
+
+.soloToggle:hover {
+  color: var(--text);
+  border-color: rgba(155, 111, 255, 0.4);
+}
+
+.soloToggleActive {
+  color: var(--accent);
+  border-color: var(--accent);
+  background: rgba(0, 212, 180, 0.08);
+}
+
 /* Bottom Bar */
 .bottomBar {
   display: flex;

@@ -9,6 +9,7 @@ const SHORTCUTS = [
   { keys: ['L'],     label: 'Arm / clear the looper' },
   { keys: ['U'],     label: 'lock bpm / unlock bpm'},
   { keys: ['S'],     label: 'End session'},
+  { keys: ['N'],     label: 'Toggle the solo helper' },
   { keys: ['?'],     label: 'Show this shortcut list' },
   { keys: ['Esc'],   label: 'Close this card' },
 ];
@@ -142,31 +143,6 @@ function MicIcon() {
   );
 }
 
-// Live rush/drag meter. avgMs < 0 = rushing (early), > 0 = dragging (late).
-function TimingMeter({ timing }) {
-  if (!timing) return null;
-  const { avgMs, tightness } = timing;
-  const clamped = Math.max(-60, Math.min(60, avgMs));
-  const pos     = 50 + (clamped / 60) * 50; // 0–100% across the track
-  const inPocket = Math.abs(avgMs) <= 20;
-  const label = inPocket ? 'In the pocket' : avgMs < 0 ? 'Rushing' : 'Dragging';
-
-  return (
-    <div className={styles.timing}>
-      <span className={styles.timingEnd}>rush</span>
-      <div className={styles.timingTrack}>
-        <div className={styles.timingCenter} />
-        <div
-          className={`${styles.timingDot} ${inPocket ? styles.timingDotOk : ''}`}
-          style={{ left: `${pos}%` }}
-        />
-      </div>
-      <span className={styles.timingEnd}>drag</span>
-      <span className={styles.timingStat}>{label} · {Math.round(tightness * 100)}%</span>
-    </div>
-  );
-}
-
 // "A minor" → "Am", "F major" → "F", "C♯ minor" → "C♯m"
 function formatChord(key) {
   if (!key) return '—';
@@ -175,6 +151,62 @@ function formatChord(key) {
 }
 
 const EMPTY_SLOTS = ['—', '—', '—', '—'];
+
+// ── Solo helper ──────────────────────────────────────────────────────────────
+// Shows the (beginner-friendly) pentatonic scale for the live key, glowing the
+// notes that are tones of the current chord — i.e. the best notes to land on.
+const SOLO_NOTES = ['C', 'C♯', 'D', 'D♯', 'E', 'F', 'F♯', 'G', 'G♯', 'A', 'A♯', 'B'];
+const MINOR_PENT = [0, 3, 5, 7, 10];
+const MAJOR_PENT = [0, 2, 4, 7, 9];
+
+const noteToPc = (name) => SOLO_NOTES.indexOf(name);
+
+function parseSoloKey(musicKey) {
+  if (!musicKey) return null;
+  const [name, mode] = musicKey.split(' ');
+  const root = noteToPc(name);
+  return root < 0 ? null : { root, minor: mode === 'minor' };
+}
+
+function parseSoloChord(label) {
+  if (!label || label === '—') return null;
+  const minor = label.endsWith('m');
+  const root  = noteToPc(minor ? label.slice(0, -1) : label);
+  return root < 0 ? null : { root, minor };
+}
+
+function SoloStrip({ musicKey, currentChord }) {
+  const key = parseSoloKey(musicKey);
+  if (!key) {
+    return (
+      <div className={styles.soloStrip}>
+        <span className={styles.soloHint}>Play a few chords — your solo notes will appear here</span>
+      </div>
+    );
+  }
+
+  const pcs   = (key.minor ? MINOR_PENT : MAJOR_PENT).map(i => (key.root + i) % 12);
+  const chord = parseSoloChord(currentChord);
+  const tones = chord
+    ? new Set([chord.root, (chord.root + (chord.minor ? 3 : 4)) % 12, (chord.root + 7) % 12])
+    : new Set();
+
+  return (
+    <div className={styles.soloStrip}>
+      <span className={styles.soloLead}>
+        Solo{chord ? <> over <b>{currentChord}</b></> : ''}
+      </span>
+      <div className={styles.soloNotes}>
+        {pcs.map((pc, i) => (
+          <span key={i} className={`${styles.soloNote} ${tones.has(pc) ? styles.soloNoteTone : ''}`}>
+            {SOLO_NOTES[pc]}
+          </span>
+        ))}
+      </div>
+      <span className={styles.soloScale}>{SOLO_NOTES[key.root]} {key.minor ? 'minor' : 'major'} pent.</span>
+    </div>
+  );
+}
 
 function SessionView({
   bpm, musicKey, activeBeat, listening, bandPlaying, micBlocked, countIn,
@@ -192,9 +224,13 @@ function SessionView({
   const isActive = listening || bandPlaying;
   const ringRef  = useRef(null);
   const [showShortcuts, setShowShortcuts] = useState(false);
+  const [showSolo, setShowSolo] = useState(false);
 
   // beat dots follow the time signature: 4/4 → 4, 3/4 → 3, 6/8 → 6
   const beatCount = Number((timeSig ?? '4/4').split('/')[0]) || 4;
+
+  // the chord the player is on right now drives the solo helper's glowing tones
+  const currentChord = chordHistory[chordHistory.length - 1];
 
   // pad history to 4 slots, newest on the right
   const slots = [...EMPTY_SLOTS];
@@ -236,6 +272,10 @@ function SessionView({
       if (e.code === 'KeyL') {        // Loop
         e.preventDefault();
         onToggleLoop();
+      }
+      if (e.code === 'KeyN') {        // Solo helper
+        e.preventDefault();
+        setShowSolo((v) => !v);
       }
       if (e.code === 'KeyS') {        // End session
         e.preventDefault();
@@ -345,7 +385,7 @@ function SessionView({
         </div>
       </div>
 
-      {bandPlaying && <TimingMeter timing={timing} />}
+      {showSolo && <SoloStrip musicKey={musicKey} currentChord={currentChord} />}
 
       {/* Bottom bar */}
       <div className={styles.bottomBar}>
@@ -441,6 +481,14 @@ function SessionView({
 
         <div className={styles.rightControls}>
           <span className={styles.timeSig}>{timeSig}</span>
+          <button
+            className={`${styles.soloToggle} ${showSolo ? styles.soloToggleActive : ''}`}
+            onClick={() => setShowSolo((v) => !v)}
+            aria-pressed={showSolo}
+            title="Solo helper — notes that sound good to solo with (N)"
+          >
+            ♪ Solo
+          </button>
           <button
             className={styles.shortcut}
             onClick={() => setShowShortcuts(true)}

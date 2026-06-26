@@ -32,6 +32,7 @@ function App() {
         audioDevices={engine.audioDevices}
         selectedDeviceId={engine.selectedDeviceId}
         setSelectedDeviceId={engine.setSelectedDeviceId}
+        onRefreshDevices={engine.refreshDevices}
       />
     );
   }

@@ -211,7 +211,7 @@ export const SPARSE_ONSETS = 2;          // player onsets/bar at or below this â
 
 // Once the band is locked in it follows the player's tempo less eagerly â€”
 // real bands hold the pocket rather than chase every fluctuation.
-export const LOCKED_FOLLOW_SCALE = 0.6;
+export const LOCKED_FOLLOW_SCALE = 0.38;
 
 // Session personality: rolled once per session so every jam has a slightly
 // different drummer. [lo, hi] ranges, sampled uniformly.

@@ -165,7 +165,7 @@ export function detectChord(chromaProfile, prevQuality = 'maj') {
 
 export function wobbleToFollowRate(wobble) {
   const STEADY = 0.1, MESSY = 0.4;
-  const HIGH_RATE = 0.10, LOW_RATE = 0.05;
+  const HIGH_RATE = 0.07, LOW_RATE = 0.035;
   const t = Math.max(0, Math.min(1, (wobble - STEADY) / (MESSY - STEADY)));
   return HIGH_RATE + t * (LOW_RATE - HIGH_RATE);
 }

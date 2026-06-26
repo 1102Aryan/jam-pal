@@ -146,25 +146,33 @@ export function useJamEngine({ style = 'supportive', genre = 'blues', timeSig = 
     setLoopStatus({ mode: 'off', bar: 0, bars: 4 });
   }, []);
 
-  // Option to use input device
-  useEffect(() => {
-    async function fetchDevices() {
-      try {
-        const devices = await navigator.mediaDevices.enumerateDevices();
-
-        const audioInputs = devices.filter(device => device.kind === 'audioinput');
-
-        setAudioDevices(audioInputs);
-
-        if (audioInputs.length > 0) {
-          setSelectedDeviceId(audioInputs[0].deviceId);
-        }
-      } catch (e) {
-        console.error("Error fetching devices:", e);
+  // Device labels are only exposed after mic permission, so when the user opens
+  // the picker we request permission once and re-enumerate to get real names.
+  const refreshDevices = useCallback(async (allowPrompt = false) => {
+    try {
+      const list = async () =>
+        (await navigator.mediaDevices.enumerateDevices()).filter(d => d.kind === 'audioinput');
+      let inputs = await list();
+      if (allowPrompt && (inputs.length === 0 || inputs.every(d => !d.label))) {
+        const tmp = await navigator.mediaDevices.getUserMedia({ audio: true });
+        tmp.getTracks().forEach(t => t.stop());
+        inputs = await list();
       }
+      setAudioDevices(inputs);
+      setSelectedDeviceId(prev =>
+        prev && inputs.some(d => d.deviceId === prev) ? prev : (inputs[0]?.deviceId ?? '')
+      );
+    } catch (e) {
+      console.error('Error fetching devices:', e);
     }
-    fetchDevices();
   }, []);
+
+  useEffect(() => {
+    refreshDevices(false);
+    const onChange = () => refreshDevices(false);
+    navigator.mediaDevices?.addEventListener?.('devicechange', onChange);
+    return () => navigator.mediaDevices?.removeEventListener?.('devicechange', onChange);
+  }, [refreshDevices]);
 
   const toggleMetronome = useCallback(() => {
     if (!engineRef.current) return;
@@ -232,6 +240,7 @@ export function useJamEngine({ style = 'supportive', genre = 'blues', timeSig = 
     jamMode, timing, isRecording, loopStatus, sessionReport, isMetronomeOn, toggleMetronome,
     isLockOn, toggleLock,
     drumVolume, bassVolume, audioDevices, selectedDeviceId, setSelectedDeviceId, setDrumVolume, setBassVolume,
+    refreshDevices,
     toggleMic, toggleRecording, toggleLoop,
   };
 }

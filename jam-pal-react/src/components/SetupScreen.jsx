@@ -21,7 +21,7 @@ function SetupScreen({
   genre = 'blues', style = 'supportive', timeSig = '4/4',
   onGenreChange, onStyleChange, onTimeSigChange,
 
-  audioDevices = [], selectedDeviceId, setSelectedDeviceId
+  audioDevices = [], selectedDeviceId, setSelectedDeviceId, onRefreshDevices
 }) {
   return (
     <div className={styles.page}>
@@ -53,6 +53,8 @@ function SetupScreen({
         <select
           value={selectedDeviceId}
           onChange={(e) => setSelectedDeviceId?.(e.target.value)}
+          onMouseDown={() => onRefreshDevices?.(true)}
+          onFocus={() => onRefreshDevices?.(true)}
           className={styles.selectDropdown}
         >
           {audioDevices.map((device, index) => (
