@@ -84,6 +84,8 @@ The current application is a work in progress and will include these specific fe
 
 ## Acknowledgements
 - Vectors and icons by <a href="https://www.svgrepo.com" target="_blank">SVG Repo</a>
+- Colin Raffel. "Learning-Based Methods for Comparing Sequences, with Applications to Audio-to-MIDI Alignment and Matching". PhD Thesis, 2016.
+
 
 ## License
 

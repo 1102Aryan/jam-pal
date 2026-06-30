@@ -2,6 +2,7 @@ import { useRef, useState, useCallback, useEffect } from 'react';
 import { createAudioEngine } from '../engine/audioEngine.js';
 import { createScheduler } from '../engine/scheduler.js';
 import { createBrain } from '../engine/bandBrain.js';
+import { createTransformerBrain } from '../engine/transformerBrain.js';
 import { createJamDirector } from '../engine/jamDirector.js';
 import { createSessionStats } from '../engine/sessionStats.js';
 import { METERS } from '../engine/config.js';
@@ -100,7 +101,10 @@ export function useJamEngine({ style = 'supportive', genre = 'blues', timeSig = 
     engine.setDrumVolume(drumVolRef.current);
     engine.setBassVolume(bassVolRef.current);
     if (!schedulerRef.current) {
-      const sched = createScheduler(engine, createBrain({ genre, timeSig: timeSigRef.current }), meter);
+      const brain = import.meta.env.VITE_USE_TRANSFORMER === 'true'
+        ? createTransformerBrain({ genre, timeSig: timeSigRef.current })
+        : createBrain({ genre, timeSig: timeSigRef.current });
+      const sched = createScheduler(engine, brain, meter);
       schedulerRef.current = sched;
 
       const director = createJamDirector({
