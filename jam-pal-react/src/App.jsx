@@ -47,6 +47,7 @@ function App() {
       musicKey={engine.musicKey}
       rms={engine.rms}
       energy={engine.energy}
+      getFrequencyData={engine.getFrequencyData}
       activeBeat={engine.activeBeat}
       status={engine.status}
       onsetFlash={engine.onsetFlash}

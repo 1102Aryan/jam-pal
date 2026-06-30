@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import styles from './SessionView.module.css';
 import jamPalLogo from '../assets/jam_pal.svg';
+import RingVisualizer from './RingVisualizer';
 
 const SHORTCUTS = [
   { keys: ['Space'], label: 'Play / pause the band' },
@@ -211,10 +212,12 @@ function SoloStrip({ musicKey, currentChord }) {
 function SessionView({
   bpm, musicKey, activeBeat, listening, bandPlaying, micBlocked, countIn,
   chordHistory = [],
+  rms = 0, energy = 0,
   username, onToggleMic, onEndSession,
   genre = 'rock', style = 'supportive', timeSig = '4/4',
   jamMode = null,
   timing = null,
+  getFrequencyData,
   isRecording = false, onToggleRecording,
   isMetronomeOn = false, onToggleMetronome,
   isLockOn = false, onToggleLock,
@@ -287,7 +290,7 @@ function SessionView({
       }
       if (e.code === 'keyM') {
         e.preventDefault();
-        onToggleMetronome
+        onToggleMetronome();
       }
 
     };
@@ -351,10 +354,15 @@ function SessionView({
       {/* Main console */}
       <div className={styles.main}>
         <div className={styles.ringWrap}>
-          {/* visual layers — only these animate */}
-          <div className={styles.ring} />
-          <div className={styles.ringGlow} />
-          <div ref={ringRef} className={styles.ringBeat} />
+          {/* audio-reactive Fourier-morph ring (canvas) */}
+          <RingVisualizer
+            className={styles.ringCanvas}
+            getFrequencyData={getFrequencyData}
+            rms={rms}
+            energy={energy}
+            activeBeat={activeBeat}
+            listening={listening || bandPlaying}
+          />
 
           {/* content layer — never scales or moves */}
           <div className={styles.ringContent}>

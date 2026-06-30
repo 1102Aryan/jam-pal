@@ -81,6 +81,16 @@
   flex-shrink: 0;
 }
 
+/* audio-reactive ring canvas — drawn 1.4× the ring box so the wobble + glow
+   have room around the ring without clipping; sits behind the content */
+.ringCanvas {
+  position: absolute;
+  inset: -20%;
+  width: 140%;
+  height: 140%;
+  pointer-events: none;
+}
+
 /* Dark interior + subtle inner smoke */
 .ring {
   position: absolute;

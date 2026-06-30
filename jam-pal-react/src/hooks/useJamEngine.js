@@ -234,13 +234,16 @@ export function useJamEngine({ style = 'supportive', genre = 'blues', timeSig = 
     schedulerRef.current?.toggleLoop();
   }, []);
 
+  // stable accessor so the visualizer can read FFT each frame without re-renders
+  const getFrequencyData = useCallback((t) => engineRef.current?.getFrequencyData?.(t) ?? false, []);
+
   return {
     listening, bandPlaying, bandReady,
     bpm, musicKey, chordHistory, rms, energy, activeBeat, status, onsetFlash, micBlocked, countIn,
     jamMode, timing, isRecording, loopStatus, sessionReport, isMetronomeOn, toggleMetronome,
     isLockOn, toggleLock,
     drumVolume, bassVolume, audioDevices, selectedDeviceId, setSelectedDeviceId, setDrumVolume, setBassVolume,
-    refreshDevices,
+    refreshDevices, getFrequencyData,
     toggleMic, toggleRecording, toggleLoop,
   };
 }

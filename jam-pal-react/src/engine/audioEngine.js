@@ -229,6 +229,14 @@ export function createAudioEngine(callbacks = {}) {
     },
     lockChord(v) { chordLocked = v; },
     getEnergyLevel:  () => energyLevel(smoothedEnergy),
+
+    // raw FFT magnitudes (0-255) for the visualizer; fills `target` in place
+    getFrequencyData(target) {
+      if (!analyser) return false;
+      analyser.getByteFrequencyData(target);
+      return true;
+    },
+    getFrequencyBinCount: () => (analyser ? analyser.frequencyBinCount : 0),
     getDetectedBPM:  () => detectedBPM,
     getSmoothedWobble: () => smoothedWobble,
     isBandPlaying:   () => bandPlaying,
@@ -281,6 +289,7 @@ export function createAudioEngine(callbacks = {}) {
       recLeft = [];
       recRight = [];
       recording = true;
+      recorderNode.port.postMessage('start');
       callbacks.onRecordingChange?.(true);
       return true;
     },
@@ -288,6 +297,7 @@ export function createAudioEngine(callbacks = {}) {
     stopRecording() {
       if (!recording) return;
       recording = false;
+      recorderNode?.port.postMessage('stop');
       callbacks.onRecordingChange?.(false);
 
       if (recLeft.length) {
@@ -487,18 +497,22 @@ export function createAudioEngine(callbacks = {}) {
       keyAnalyser.smoothingTimeConstant = 0.5;
       source.connect(keyAnalyser);
 
-      // recording tap: sum the band master (dry + reverb) and the mic into a
-      // script processor that accumulates raw PCM while recording (→ WAV)
-      recorderNode = audioCtx.createScriptProcessor(4096, 2, 2);
-      recorderNode.onaudioprocess = (e) => {
-        if (!recording) return;
-        const ib = e.inputBuffer;
-        recLeft.push(ib.getChannelData(0).slice());
-        recRight.push(ib.getChannelData(ib.numberOfChannels > 1 ? 1 : 0).slice());
-      };
-      limiter.connect(recorderNode);     // record the limited master (band)
-      source.connect(recorderNode);      // + the mic
-      recorderNode.connect(audioCtx.destination); // must be connected to run; outputs silence
+      // recording tap: sum the band master (dry + reverb) and the mic into an
+      // AudioWorklet that streams raw PCM to the main thread while recording (→ WAV)
+      try {
+        await audioCtx.audioWorklet.addModule(import.meta.env.BASE_URL + 'recorder-worklet.js');
+        recorderNode = new AudioWorkletNode(audioCtx, 'recorder-worklet');
+        recorderNode.port.onmessage = (e) => {
+          recLeft.push(e.data.left);
+          recRight.push(e.data.right);
+        };
+        limiter.connect(recorderNode);     // record the limited master (band)
+        source.connect(recorderNode);      // + the mic
+        recorderNode.connect(audioCtx.destination); // keeps it in the graph; outputs silence
+      } catch (err) {
+        console.warn('[JamPal] Recorder worklet failed to load — recording disabled', err);
+        recorderNode = null;
+      }
 
       timeBuf = new Float32Array(analyser.fftSize);
       keyFreqBuf = new Float32Array(keyAnalyser.frequencyBinCount);
@@ -538,7 +552,7 @@ export function createAudioEngine(callbacks = {}) {
       // context closes — encoding needs audioCtx.sampleRate)
       api.stopRecording();
       if (recorderNode) {
-        recorderNode.onaudioprocess = null;
+        recorderNode.port.onmessage = null;
         try { recorderNode.disconnect(); } catch { /* not connected */ }
       }
       if (rafId) { cancelAnimationFrame(rafId); rafId = null; }
