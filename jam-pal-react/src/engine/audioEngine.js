@@ -14,8 +14,8 @@ import {
 import { createBeatPredictor } from './beatPredictor.js';
 import { createChordPredictor } from './chordPredictor.js';
 
-// Samples live under Vite's base URL (the app is served from /jam-pal/), so
-// fetch them relative to that — NOT from the site root, which 404s.
+// Samples live under Vite's base URL, so fetch them relative to that rather
+// than assuming a fixed path (base is '/' on the custom domain).
 const SAMPLE_ROOT = import.meta.env.BASE_URL + 'samples/';
 // import { channel } from 'diagnostics_channel';
 
