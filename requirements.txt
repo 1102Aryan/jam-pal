@@ -2,3 +2,6 @@ fastapi
 uvicorn[standard]
 pydantic
 httpx
+torch 
+transformers
+git+https://github.com/jthickstun/anticipation.git

@@ -1,4 +1,4 @@
-from typing import List, Literal, Union
+from typing import List, Literal, Optional, Union
 
 from pydantic import BaseModel, Field
 
@@ -8,6 +8,7 @@ class Context(BaseModel):
     playerOnsets: int = 4
     recentChords: List[str] = Field(default_factory=list)
     tier: int = 1
+    estimatedBpm: Optional[float] = None  # from /anticipate; available to generator if needed
 
 
 class GenerateRequest(BaseModel):

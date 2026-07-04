@@ -1,0 +1,15 @@
+# training-only files — not needed for inference, saves ~1 GB from the image
+app/checkpoint-25500/optimizer.pt
+app/checkpoint-25500/rng_state.pth
+app/checkpoint-25500/scaler.pt
+app/checkpoint-25500/scheduler.pt
+app/checkpoint-25500/training_args.bin
+app/checkpoint-25500/trainer_state.json
+
+# python cache
+**/__pycache__
+**/*.pyc
+**/*.pyo
+
+# dev / test files
+app/test_checkpoint.py

@@ -41,6 +41,7 @@ export function useJamEngine({ style = 'supportive', genre = 'blues', timeSig = 
   const schedulerRef = useRef(null);
   const directorRef  = useRef(null);
   const statsRef     = useRef(null);
+  const brainRef     = useRef(null);
   const styleRef     = useRef(style);
   const timeSigRef   = useRef(timeSig);
   const drumVolRef   = useRef(0.85);
@@ -68,9 +69,14 @@ export function useJamEngine({ style = 'supportive', genre = 'blues', timeSig = 
         onEnergy: (e) => { setEnergy(e); statsRef.current?.addEnergy(e); },
         onStatus:          setStatus,
         onListeningChange: setListening,
-        onChord: (label) => {
+        onChord: (label, chordRootPc) => {
           setChordHistory(prev => prev[prev.length - 1] === label ? prev : [...prev, label].slice(-8));
           statsRef.current?.addChord(label);
+          // feed the chord onset into the transformer brain for anticipation
+          if (chordRootPc != null) {
+            const t = engineRef.current?.getAudioCtx?.()?.currentTime ?? 0;
+            brainRef.current?.addEvent?.(t, chordRootPc + 48); // encode root as C3..B3 MIDI pitch
+          }
         },
         onTiming: (t) => { setTiming(t); statsRef.current?.addTiming(t.offsetMs); },
         onRecordingChange: setRecording,
@@ -104,6 +110,7 @@ export function useJamEngine({ style = 'supportive', genre = 'blues', timeSig = 
       const brain = import.meta.env.VITE_USE_TRANSFORMER === 'true'
         ? createTransformerBrain({ genre, timeSig: timeSigRef.current })
         : createBrain({ genre, timeSig: timeSigRef.current });
+      brainRef.current = brain;
       const sched = createScheduler(engine, brain, meter);
       schedulerRef.current = sched;
 
@@ -142,6 +149,7 @@ export function useJamEngine({ style = 'supportive', genre = 'blues', timeSig = 
 
     // keep the AudioContext alive long enough for the ending hit to ring out
     setTimeout(() => engine?.stop(), 800);
+    brainRef.current = null;
     setBandPlaying(false);
     setActiveBeat(-1);
     setChordHistory([]);
