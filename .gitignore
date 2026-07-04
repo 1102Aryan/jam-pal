@@ -18,6 +18,8 @@ env/
 *.pt
 *.onnx
 *.h5
+*.safetensors
+checkpoint-*/
 checkpoints/
 runs/
 wandb/
