@@ -33,6 +33,9 @@ jobs:
           cache-dependency-path: jam-pal-react/package-lock.json
       - run: npm ci
       - run: npm run build
+        env:
+          VITE_USE_TRANSFORMER: true
+          VITE_TRANSFORMER_URL: https://1102aryan-jam-pal-backend.hf.space
       - uses: actions/upload-pages-artifact@v3
         with:
           path: jam-pal-react/dist
