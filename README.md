@@ -28,6 +28,8 @@ A real-time jam partner for a beginner guitarist. It listens through the microph
 
 The real-time audio (scheduling, sample playback) runs client-side because network latency would break musical timing.
 
+The note prediction is powered by a fine-tuned Anticipatory Music Transformer,served from a backend hosted on Hugging Face, which predicts the notes a guitarist is likely to play next. If the backend is slow to respond or unavailable (for example, on a poor connection), Jam Pal falls back to a local rule-based anticipation system, so the band keeps playing either way.
+
 ## Screenshots
 
 <div align="center">
@@ -56,7 +58,26 @@ View the website through this [link](https://1102aryan.github.io/jam-pal/).
   <img src="./images/screenshots/jam_pal_demo.gif" alt="App Demo" width="800"/>
 </div>
 
+## How to use
+
+1. Setting up - You can use either headphones or an audio interface to ensure the inference audio is not picked up. 
+2. Options - Select through a genre and style of learning
+3. Allow access when prompted by the browser — required to record the guitar audio.
+4. Start playing - The drum and bass will follow along your tempo and key. Use the shortcuts to record, loop, or for metronome.
+
 ## Keyboard Shortcuts
+
+| Key | Action |
+|:---:|:------:|
+| `Space` | Play / pause the band |
+| `R` | Start / stop recording |
+| `M` | Metronome on / off |
+| `L` | Arm / clear the looper |
+| `U` | Lock / unlock BPM |
+| `S` | End session |
+| `N` | Toggle the solo helper |
+| `?` | Show the shortcut list |
+| `Esc` | Close the shortcut card |
 
 ## Current Features
 Here are the features implemented:
@@ -70,6 +91,8 @@ Here are the features implemented:
 - Looper
 - Volume control for each instrument
 - Time feedback meter
+- Anticipation focused model
+
 
 
 ## Status 
@@ -77,15 +100,17 @@ The current application is a work in progress and will include these specific fe
 
 - Include more genres (funk, etc)
 - Style selection (controls how the tool behaves - support, lead, etc.)
-- Anticipation focused model
-- Specific animations
 - AI analysis 
 - Time signature modifications
 
 ## Acknowledgements
-- Vectors and icons by <a href="https://www.svgrepo.com" target="_blank">SVG Repo</a>
-- Colin Raffel. "Learning-Based Methods for Comparing Sequences, with Applications to Audio-to-MIDI Alignment and Matching". PhD Thesis, 2016.
 
+- **Anticipatory Music Transformer** — Thickstun, Hall, Donahue, Liang (Stanford
+  CRFM, 2023). The note-prediction model is fine-tuned from their work.
+  [[paper](https://arxiv.org/abs/2306.08620)] · [[model](https://huggingface.co/stanford-crfm/music-small-800k)]
+- Drum and bass samples — [Will be updated soon], licensed under CC0
+- Icons by [SVG Repo](https://www.svgrepo.com)
+- Built with [librosa](https://librosa.org) for offline audio-analysis prototyping
 
 ## License
 
