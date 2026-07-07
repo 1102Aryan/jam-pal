@@ -1,7 +1,7 @@
 from fastapi import APIRouter
 
 from app.models.schemas import GenerateRequest, GenerateResponse
-from app.services.generator import get_generator
+from app.engine.anticipate_generator import get_generator
 
 router = APIRouter()
 

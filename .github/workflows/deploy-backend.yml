@@ -1,0 +1,43 @@
+name: Deploy backend to HF Spaces
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'backend/**'
+      - '.github/workflows/deploy-backend.yml'
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          lfs: true
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - run: pip install huggingface_hub
+
+      - name: Upload backend to HF Space
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+        run: |
+          python - <<'EOF'
+          import os
+          from huggingface_hub import HfApi
+
+          api = HfApi(token=os.environ["HF_TOKEN"])
+          api.upload_folder(
+              folder_path="backend",
+              repo_id="1102Aryan/jam-pal-backend",
+              repo_type="space",
+              # local checkpoint is excluded — the Space loads from HF Hub instead
+              ignore_patterns=["app/checkpoint-25500/*"],
+              commit_message="chore: auto-deploy from GitHub Actions",
+          )
+          print("Deployed to HF Space.")
+          EOF

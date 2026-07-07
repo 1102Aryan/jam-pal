@@ -28,6 +28,7 @@ function toEngineEvents(rawEvents, ctx) {
 
 export function createTransformerBrain({
   genre = 'rock', timeSig = '4/4', endpoint = ENDPOINT, lookahead = 2, lowWater = 1,
+  onPrediction = null,
 } = {}) {
   const fallback  = createBrain({ genre, timeSig });
   let buffer      = [];
@@ -87,11 +88,12 @@ export function createTransformerBrain({
       const res = await fetch(`${endpoint}/anticipate`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ recent_notes: notes, steps: 1, top_p: 0.95 }),
+        body: JSON.stringify({ recent_notes: notes, steps: 4, top_p: 0.95 }),
       });
       if (res.ok) {
         const data = await res.json();
         lastPrediction = data.predictions[0];
+        onPrediction?.(lastPrediction)
         console.log('[transformer] anticipation →', lastPrediction);
       }
     } catch { /* offline */ }

@@ -11,7 +11,7 @@ class NoteEvent(BaseModel):
 
 class AnticipateRequest(BaseModel):
     recent_notes: List[NoteEvent] = Field(min_length=1)
-    steps: int = Field(default=1, ge=1, le=16)
+    steps: int = Field(default=4, ge=1, le=16)
     top_p: float = Field(default=0.95, ge=0.0, le=1.0)
 
 

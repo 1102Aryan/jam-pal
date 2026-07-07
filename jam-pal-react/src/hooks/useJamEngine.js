@@ -108,7 +108,15 @@ export function useJamEngine({ style = 'supportive', genre = 'blues', timeSig = 
     engine.setBassVolume(bassVolRef.current);
     if (!schedulerRef.current) {
       const brain = import.meta.env.VITE_USE_TRANSFORMER === 'true'
-        ? createTransformerBrain({ genre, timeSig: timeSigRef.current })
+        ? createTransformerBrain({
+            genre,
+            timeSig: timeSigRef.current,
+            onPrediction: (pred) => {
+              if (pred?.estimated_bpm != null) {
+                engineRef.current?.nudgeBpm?.(pred.estimated_bpm);
+              }
+            },
+          })
         : createBrain({ genre, timeSig: timeSigRef.current });
       brainRef.current = brain;
       const sched = createScheduler(engine, brain, meter);

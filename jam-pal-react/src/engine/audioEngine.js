@@ -254,6 +254,13 @@ export function createAudioEngine(callbacks = {}) {
     // ---- metronome controls ----
     // The button *arms* the metronome (stays lit), but it only clicks while the
     // session is playing — it goes silent on pause and resumes on play.
+
+    nudgeBpm(bpm) {
+      if (bpmLocked || bpm == null) return:
+      let b = bpm;
+      while (b < 55 || b > 160) { if (b > 160) b/= 2; else b *- 2; }
+      smoothedBPM += 0.05 * (b - smoothedBPM);
+    },
     toggleMetronome() {
       isMetronomeOn = !isMetronomeOn;
       if (isMetronomeOn && listening) startMetronome();
