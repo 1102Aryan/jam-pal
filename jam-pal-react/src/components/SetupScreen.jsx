@@ -22,6 +22,36 @@ function MicIcon({ size = 18, className }) {
   );
 }
 
+function PaintBrush({ size = 18 }) {
+  return (
+    <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+      <defs>
+        <linearGradient id="rocket-gradient" x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" stopColor="#00d4b4" />
+          <stop offset="100%" stopColor="#9b6fff" />
+        </linearGradient>
+      </defs>
+      <path strokeLinecap="round" strokeLinejoin="round" stroke='url(#rocket-gradient)' d="M9.53 16.122a3 3 0 0 0-5.78 1.128 2.25 2.25 0 0 1-2.4 2.245 4.5 4.5 0 0 0 8.4-2.245c0-.399-.078-.78-.22-1.128Zm0 0a15.998 15.998 0 0 0 3.388-1.62m-5.043-.025a15.994 15.994 0 0 1 1.622-3.395m3.42 3.42a15.995 15.995 0 0 0 4.764-4.648l3.876-5.814a1.151 1.151 0 0 0-1.597-1.597L14.146 6.32a15.996 15.996 0 0 0-4.649 4.763m3.42 3.42a6.776 6.776 0 0 0-3.42-3.42" />
+    </svg>
+
+
+  )
+}
+
+function RocketLaunch({ size = 18 }) {
+  return (
+    <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} fill="none" viewBox="0 0 24 24" strokeWidth={1.5} className={styles.rocketLaunch}>
+      <defs>
+        <linearGradient id="rocket-gradient" x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" stopColor="#00d4b4" />
+          <stop offset="100%" stopColor="#9b6fff" />
+        </linearGradient>
+      </defs>
+      <path strokeLinecap="round" strokeLinejoin="round" stroke="url(#rocket-gradient)" d="M15.59 14.37a6 6 0 0 1-5.84 7.38v-4.8m5.84-2.58a14.98 14.98 0 0 0 6.16-12.12A14.98 14.98 0 0 0 9.631 8.41m5.96 5.96a14.926 14.926 0 0 1-5.841 2.58m-.119-8.54a6 6 0 0 0-7.381 5.84h4.8m2.581-5.84a14.927 14.927 0 0 0-2.58 5.84m2.699 2.7c-.103.021-.207.041-.311.06a15.09 15.09 0 0 1-2.448-2.448 14.9 14.9 0 0 1 .06-.312m-2.24 2.39a4.493 4.493 0 0 0-1.757 4.306 4.493 4.493 0 0 0 4.306-1.758M16.5 9a1.5 1.5 0 1 1-3 0 1.5 1.5 0 0 1 3 0Z" />
+    </svg>
+  )
+}
+
 function LevelBars() {
   return (
     <div className={styles.levelBars}>
@@ -88,8 +118,10 @@ function SetupScreen({
           <div className={styles.logoItem}>
             <img src={jamPalLogo} alt="Jam Pal" className={styles.logo} />
           </div>
-          <span className={styles.logoText}>Jam Pal</span>
-          <span className={styles.tagline}>A virtual band that listens and follows your playing</span>
+          <div className={styles.title}>
+            <span className={styles.logoText}>Jam Pal</span>
+            <span className={styles.tagline}>A virtual band that listens and follows your playing</span>
+          </div>
         </div>
         <div className={styles.headerRight}>
           <span className={styles.guestLabel}>guest</span>
@@ -163,11 +195,7 @@ function SetupScreen({
           {/* S2 — Band Setup */}
           <div className={styles.card} ref={cardRefs[1]} onMouseEnter={() => setActiveStep(2)}>
             <div className={styles.cardHead}>
-              <div className={styles.cardIconWrap}>
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
-                  <path d="M12 3c-4.97 0-9 4.03-9 9s4.03 9 9 9 9-4.03 9-9-4.03-9-9-9zm0 16c-3.86 0-7-3.14-7-7s3.14-7 7-7 7 3.14 7 7-3.14 7-7 7zm0-11a4 4 0 1 0 0 8 4 4 0 0 0 0-8zm0 6a2 2 0 1 1 0-4 2 2 0 0 1 0 4z" />
-                </svg>
-              </div>
+              <PaintBrush size={40}/>
               <div>
                 <h2 className={styles.cardTitle}>Shape the band</h2>
                 <p className={styles.cardSub}>Customise how your virtual band responds</p>
@@ -175,40 +203,40 @@ function SetupScreen({
             </div>
 
             <div className={styles.s2Controls}>
-                <div className={styles.fieldGroup}>
-                  <span className={styles.fieldLabel}>Genre</span>
-                  <div className={styles.pillRow}>
-                    {GENRES.map(g => (
-                      <button key={g} type="button"
-                        className={`${styles.pill} ${genre === g.toLowerCase() ? styles.pillActive : ''}`}
-                        onClick={() => onGenreChange?.(g.toLowerCase())}
-                      >{g}</button>
-                    ))}
-                  </div>
-                </div>
-                <div className={styles.fieldGroup}>
-                  <span className={styles.fieldLabel}>Style</span>
-                  <div className={styles.pillRow}>
-                    {STYLES.map(s => (
-                      <button key={s.value} type="button"
-                        className={`${styles.pill} ${style === s.value ? styles.pillActive : ''}`}
-                        onClick={() => onStyleChange?.(s.value)}
-                      >{s.label}</button>
-                    ))}
-                  </div>
-                </div>
-                <div className={styles.fieldGroup}>
-                  <span className={styles.fieldLabel}>Time Signature</span>
-                  <div className={styles.pillRow}>
-                    {TIME_SIGS.map(t => (
-                      <button key={t} type="button"
-                        className={`${styles.pill} ${timeSig === t ? styles.pillActive : ''}`}
-                        onClick={() => onTimeSigChange?.(t)}
-                      >{t}</button>
-                    ))}
-                  </div>
+              <div className={styles.fieldGroup}>
+                <span className={styles.fieldLabel}>Genre</span>
+                <div className={styles.pillRow}>
+                  {GENRES.map(g => (
+                    <button key={g} type="button"
+                      className={`${styles.pill} ${genre === g.toLowerCase() ? styles.pillActive : ''}`}
+                      onClick={() => onGenreChange?.(g.toLowerCase())}
+                    >{g}</button>
+                  ))}
                 </div>
               </div>
+              <div className={styles.fieldGroup}>
+                <span className={styles.fieldLabel}>Style</span>
+                <div className={styles.pillRow}>
+                  {STYLES.map(s => (
+                    <button key={s.value} type="button"
+                      className={`${styles.pill} ${style === s.value ? styles.pillActive : ''}`}
+                      onClick={() => onStyleChange?.(s.value)}
+                    >{s.label}</button>
+                  ))}
+                </div>
+              </div>
+              <div className={styles.fieldGroup}>
+                <span className={styles.fieldLabel}>Time Signature</span>
+                <div className={styles.pillRow}>
+                  {TIME_SIGS.map(t => (
+                    <button key={t} type="button"
+                      className={`${styles.pill} ${timeSig === t ? styles.pillActive : ''}`}
+                      onClick={() => onTimeSigChange?.(t)}
+                    >{t}</button>
+                  ))}
+                </div>
+              </div>
+            </div>
           </div>
         </div>
 
@@ -216,11 +244,7 @@ function SetupScreen({
         <div className={`${styles.card} ${styles.bottomCard}`} ref={cardRefs[2]} onMouseEnter={() => setActiveStep(3)}>
           <div className={styles.s3Left}>
             <div className={styles.cardHead}>
-              <div className={styles.cardIconWrap}>
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
-                  <path d="M12 2.5C12 2.5 6 8 6 14a6 6 0 0 0 12 0c0-6-6-11.5-6-11.5zm0 15a4 4 0 0 1-4-4c0-3.5 2.67-7.27 4-9.18C13.33 6.23 16 9.5 16 13.5a4 4 0 0 1-4 4z" />
-                </svg>
-              </div>
+              <RocketLaunch size={40} />
               <div>
                 <h2 className={styles.cardTitle}>Ready to play?</h2>
                 <p className={styles.cardSub}>Use headphones to prevent feedback. Strum a few chords and the band will lock onto your tempo and key within a couple of bars.</p>
