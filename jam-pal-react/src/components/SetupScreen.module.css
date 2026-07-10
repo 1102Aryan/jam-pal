@@ -57,8 +57,16 @@
 .logoText {
   font-size: 26px;
   font-weight: 700;
-  letter-spacing: -0.03em;
-  color: var(--accent);
+  background: linear-gradient(185deg, #00d4b4 0%, #9b6fff 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  color: transparent;
+  letter-spacing: -0.02em;
+}
+
+.title {
+  display: flex;
+  flex-direction: column;
 }
 
 .tagline {
@@ -183,9 +191,38 @@
   min-height: 0;
 }
 
-.stepTitle {
-  font-size: 21px;
-  font-weight: 500;
+.bottomCard {
+  flex-direction: row;
+  align-items: center;
+  gap: 48px;
+  flex-shrink: 0;
+}
+
+/* ── Card head ───────────────────────────── */
+.cardHead {
+  display: flex;
+  align-items: flex-start;
+  gap: 18px;
+  flex-shrink: 0;
+}
+
+.cardIconWrap {
+  width: 54px;
+  height: 54px;
+  border-radius: 36px;
+  background: rgba(155, 111, 255, 0.1);
+  border: 1px solid rgba(155, 111, 255, 0.25);
+  box-shadow: inset 0 0 0 1px rgba(155, 111, 255, 0.25);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #9b6fff;
+  flex-shrink: 0;
+}
+
+.cardTitle {
+  font-size: 24px;
+  font-weight: 600;
   color: var(--text);
   letter-spacing: -0.02em;
   line-height: 1.2;
@@ -418,9 +455,11 @@
   width: 100%;
   padding: 22px 0;
   border: none;
-  border-radius: 14px;
-  background: var(--accent);
-  color: #04342c;
+  border-radius: 16px;
+  /* background: linear-gradient(135deg, #00d4b4 0%, #9b6fff 100%); */
+  background: linear-gradient(to right, #00d2ff 0%, #7038ff 100%);
+  box-shadow: inset 0 1px 1px rgba(255, 255, 255, 0.2);
+  color: #fff;
   font: inherit;
   font-size: 22px;
   font-weight: 700;
@@ -442,4 +481,117 @@
 .hint {
   font-size: 14px;
   color: var(--muted);
+  text-align: center;
+  margin: 0;
 }
+
+.kbd {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 5px;
+  background: rgba(255, 255, 255, 0.07);
+  border: 1px solid var(--line);
+  box-shadow: inset 0 0 0 1px var(--line);
+  font-family: inherit;
+  font-size: 13px;
+  color: var(--text);
+}
+
+/* ── Mobile ──────────────────────────────── */
+@media (max-width: 700px) {
+  .page {
+    height: auto;
+    min-height: 100vh;
+    overflow-y: auto;
+    overflow-x: hidden;
+  }
+
+  .header {
+    padding: 16px 16px;
+  }
+
+  .tagline {
+    display: none;
+  }
+
+  .wrapper {
+    padding: 0 12px 32px;
+    gap: 12px;
+  }
+
+  .stepper {
+    display: none;
+  }
+
+  .stepLine {
+    min-width: 20px;
+    margin: 0 10px;
+  }
+
+  .stepLabel {
+    font-size: 13px;
+  }
+
+  .topRow {
+    flex: none;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .card {
+    width: 100%;
+    border-radius: 16px;
+    padding: 22px 18px;
+    gap: 18px;
+  }
+
+  .bottomCard {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 20px;
+  }
+
+  .s3Right {
+    width: 100%;
+  }
+
+  .cardTitle {
+    font-size: 20px;
+  }
+
+  .cardSub {
+    font-size: 13px;
+  }
+
+  .pill {
+    font-size: 14px;
+    padding: 9px 16px;
+  }
+
+  .deviceRow {
+    padding: 14px 16px;
+    font-size: 14px;
+    transform: translateZ(0);
+  }
+
+  .refreshBtn {
+    font-size: 14px;
+    padding: 11px 18px;
+  }
+
+  .startBtn {
+    font-size: 18px;
+    padding: 18px 0;
+  }
+
+  .tipBox {
+    font-size: 13px;
+  }
+
+  .rocketLaunch {
+    width: 52px !important;
+    height: 52px !important;
+  }
+}
+

@@ -22,7 +22,6 @@ function MicIcon({ size = 18, className }) {
   );
 }
 
-<<<<<<< HEAD
 function PaintBrush({ size = 18 }) {
   return (
     <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
@@ -53,8 +52,6 @@ function RocketLaunch({ size = 18 }) {
   )
 }
 
-=======
->>>>>>> d1e762d5b84eecfcbbf7b8d5f9624487c2883888
 function LevelBars() {
   return (
     <div className={styles.levelBars}>
@@ -121,15 +118,10 @@ function SetupScreen({
           <div className={styles.logoItem}>
             <img src={jamPalLogo} alt="Jam Pal" className={styles.logo} />
           </div>
-<<<<<<< HEAD
           <div className={styles.title}>
             <span className={styles.logoText}>Jam Pal</span>
             <span className={styles.tagline}>A virtual band that listens and follows your playing</span>
           </div>
-=======
-          <span className={styles.logoText}>Jam Pal</span>
-          <span className={styles.tagline}>A virtual band that listens and follows your playing</span>
->>>>>>> d1e762d5b84eecfcbbf7b8d5f9624487c2883888
         </div>
         <div className={styles.headerRight}>
           <span className={styles.guestLabel}>guest</span>
@@ -203,15 +195,7 @@ function SetupScreen({
           {/* S2 — Band Setup */}
           <div className={styles.card} ref={cardRefs[1]} onMouseEnter={() => setActiveStep(2)}>
             <div className={styles.cardHead}>
-<<<<<<< HEAD
               <PaintBrush size={40}/>
-=======
-              <div className={styles.cardIconWrap}>
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
-                  <path d="M12 3c-4.97 0-9 4.03-9 9s4.03 9 9 9 9-4.03 9-9-4.03-9-9-9zm0 16c-3.86 0-7-3.14-7-7s3.14-7 7-7 7 3.14 7 7-3.14 7-7 7zm0-11a4 4 0 1 0 0 8 4 4 0 0 0 0-8zm0 6a2 2 0 1 1 0-4 2 2 0 0 1 0 4z" />
-                </svg>
-              </div>
->>>>>>> d1e762d5b84eecfcbbf7b8d5f9624487c2883888
               <div>
                 <h2 className={styles.cardTitle}>Shape the band</h2>
                 <p className={styles.cardSub}>Customise how your virtual band responds</p>
@@ -219,7 +203,6 @@ function SetupScreen({
             </div>
 
             <div className={styles.s2Controls}>
-<<<<<<< HEAD
               <div className={styles.fieldGroup}>
                 <span className={styles.fieldLabel}>Genre</span>
                 <div className={styles.pillRow}>
@@ -254,42 +237,6 @@ function SetupScreen({
                 </div>
               </div>
             </div>
-=======
-                <div className={styles.fieldGroup}>
-                  <span className={styles.fieldLabel}>Genre</span>
-                  <div className={styles.pillRow}>
-                    {GENRES.map(g => (
-                      <button key={g} type="button"
-                        className={`${styles.pill} ${genre === g.toLowerCase() ? styles.pillActive : ''}`}
-                        onClick={() => onGenreChange?.(g.toLowerCase())}
-                      >{g}</button>
-                    ))}
-                  </div>
-                </div>
-                <div className={styles.fieldGroup}>
-                  <span className={styles.fieldLabel}>Style</span>
-                  <div className={styles.pillRow}>
-                    {STYLES.map(s => (
-                      <button key={s.value} type="button"
-                        className={`${styles.pill} ${style === s.value ? styles.pillActive : ''}`}
-                        onClick={() => onStyleChange?.(s.value)}
-                      >{s.label}</button>
-                    ))}
-                  </div>
-                </div>
-                <div className={styles.fieldGroup}>
-                  <span className={styles.fieldLabel}>Time Signature</span>
-                  <div className={styles.pillRow}>
-                    {TIME_SIGS.map(t => (
-                      <button key={t} type="button"
-                        className={`${styles.pill} ${timeSig === t ? styles.pillActive : ''}`}
-                        onClick={() => onTimeSigChange?.(t)}
-                      >{t}</button>
-                    ))}
-                  </div>
-                </div>
-              </div>
->>>>>>> d1e762d5b84eecfcbbf7b8d5f9624487c2883888
           </div>
         </div>
 
@@ -297,15 +244,7 @@ function SetupScreen({
         <div className={`${styles.card} ${styles.bottomCard}`} ref={cardRefs[2]} onMouseEnter={() => setActiveStep(3)}>
           <div className={styles.s3Left}>
             <div className={styles.cardHead}>
-<<<<<<< HEAD
               <RocketLaunch size={40} />
-=======
-              <div className={styles.cardIconWrap}>
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
-                  <path d="M12 2.5C12 2.5 6 8 6 14a6 6 0 0 0 12 0c0-6-6-11.5-6-11.5zm0 15a4 4 0 0 1-4-4c0-3.5 2.67-7.27 4-9.18C13.33 6.23 16 9.5 16 13.5a4 4 0 0 1-4 4z" />
-                </svg>
-              </div>
->>>>>>> d1e762d5b84eecfcbbf7b8d5f9624487c2883888
               <div>
                 <h2 className={styles.cardTitle}>Ready to play?</h2>
                 <p className={styles.cardSub}>Use headphones to prevent feedback. Strum a few chords and the band will lock onto your tempo and key within a couple of bars.</p>
