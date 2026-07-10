@@ -1,117 +1,248 @@
+import { useEffect, useRef, useState } from 'react';
 import styles from './SetupScreen.module.css';
+import jamPalLogo from '../assets/jam_pal.svg';
+import RingVisualizer from './RingVisualizer';
 
-const STEPS = [
-  {
-    title: 'Allow your microphone',
-    desc: 'Jam Pal listens through your mic to detect what you play. Use headphones when the band is running so the drums don\'t feed back into the mic.',
-  },
-  {
-    title: 'Play your guitar',
-    desc: 'Strum chords or pick notes at whatever tempo feels natural. Jam Pal detects your BPM and key in real time — it needs a few seconds to settle on the key.',
-  },
-  {
-    title: 'The band follows you',
-    desc: 'Hit play to bring in drums and bass. They track your tempo automatically. Play softer to thin the sound out; dig in and the band fills up.',
-  },
+const GENRES = ['Blues', 'Rock', 'Pop', 'Shoegaze'];
+const STYLES = [
+  { value: 'supportive', label: 'Supportive' },
+  { value: 'lead', label: 'Lead' },
+  { value: 'trade-off', label: 'Trade-off' },
 ];
+const TIME_SIGS = ['4/4', '3/4', '6/8', '12/8'];
+const LEVEL_HEIGHTS = [5, 10, 15, 8, 13, 6, 11, 16, 7, 12, 4, 9, 14];
+const noopFreqData = () => false;
+
+function MicIcon({ size = 18, className }) {
+  return (
+    <svg className={className} width={size} height={size} viewBox="0 0 24 24" fill="currentColor">
+      <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" />
+      <path d="M19 10v2a7 7 0 0 1-14 0v-2H3v2a9 9 0 0 0 8 8.94V23h2v-2.06A9 9 0 0 0 21 12v-2h-2z" />
+    </svg>
+  );
+}
+
+function LevelBars() {
+  return (
+    <div className={styles.levelBars}>
+      {LEVEL_HEIGHTS.map((h, i) => (
+        <span key={i} className={styles.levelBar} style={{ height: `${h}px`, animationDelay: `${i * 80}ms` }} />
+      ))}
+    </div>
+  );
+}
+
+function CheckIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" className={styles.checkIcon}>
+      <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z" />
+    </svg>
+  );
+}
 
 
 function SetupScreen({
   onStart,
   genre = 'blues', style = 'supportive', timeSig = '4/4',
   onGenreChange, onStyleChange, onTimeSigChange,
-
-  audioDevices = [], selectedDeviceId, setSelectedDeviceId, onRefreshDevices
+  audioDevices = [], selectedDeviceId, setSelectedDeviceId, onRefreshDevices,
 }) {
+  const [activeStep, setActiveStep] = useState(1);
+  const cardRefs = [useRef(null), useRef(null), useRef(null)];
+
+  // On mobile/scroll: use IntersectionObserver to detect which card is centred
+  useEffect(() => {
+    const observers = cardRefs.map((ref, i) => {
+      const obs = new IntersectionObserver(
+        ([entry]) => { if (entry.isIntersecting) setActiveStep(i + 1); },
+        { threshold: 0.6 },
+      );
+      if (ref.current) obs.observe(ref.current);
+      return obs;
+    });
+    return () => observers.forEach(o => o.disconnect());
+  }, []);
+
   return (
     <div className={styles.page}>
-      <div>
-        <div className={styles.logo}>Jam Pal</div>
-        <p className={styles.tagline}>A virtual band that listens and follows your playing.</p>
+      {/* Decorative blobs */}
+      <div className={styles.blobLeft} />
+      <div className={styles.blobRight} />
+
+      {/* Background ring — same RingVisualizer as session, blurred */}
+      <div className={styles.bgRingDecor} aria-hidden="true">
+        <RingVisualizer
+          className={styles.bgRingCanvas}
+          getFrequencyData={noopFreqData}
+          rms={0}
+          energy={0}
+          activeBeat={-1}
+          listening={false}
+          playing={false}
+        />
       </div>
 
-      <ol className={styles.steps}>
-        {STEPS.map((s, i) => (
-          <li key={i} className={styles.step}>
-            <div className={styles.stepNum}>{i + 1}</div>
-            <div className={styles.stepBody}>
-              <span className={styles.stepTitle}>{s.title}</span>
-              <span className={styles.stepDesc}>{s.desc}</span>
+      {/* Top nav */}
+      <header className={styles.header}>
+        <div className={styles.headerLeft}>
+          <div className={styles.logoItem}>
+            <img src={jamPalLogo} alt="Jam Pal" className={styles.logo} />
+          </div>
+          <span className={styles.logoText}>Jam Pal</span>
+          <span className={styles.tagline}>A virtual band that listens and follows your playing</span>
+        </div>
+        <div className={styles.headerRight}>
+          <span className={styles.guestLabel}>guest</span>
+          <div className={styles.avatar}>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+              <path d="M12 12c2.7 0 4.8-2.1 4.8-4.8S14.7 2.4 12 2.4 7.2 4.5 7.2 7.2 9.3 12 12 12zm0 2.4c-3.2 0-9.6 1.6-9.6 4.8v2.4h19.2v-2.4c0-3.2-6.4-4.8-9.6-4.8z" />
+            </svg>
+          </div>
+        </div>
+      </header>
+
+      <div className={styles.wrapper}>
+        {/* Step progress */}
+        <nav className={styles.stepper}>
+          <div className={styles.stepItem}>
+            <div className={`${styles.stepCircle} ${activeStep === 1 ? styles.stepCircleActive : ''}`}>1</div>
+            <span className={`${styles.stepLabel} ${activeStep === 1 ? styles.stepLabelActive : ''}`}>Audio Input</span>
+          </div>
+          <div className={styles.stepLine} />
+          <div className={styles.stepItem}>
+            <div className={`${styles.stepCircle} ${activeStep === 2 ? styles.stepCircleActive : ''}`}>2</div>
+            <span className={`${styles.stepLabel} ${activeStep === 2 ? styles.stepLabelActive : ''}`}>Band Setup</span>
+          </div>
+          <div className={styles.stepLine} />
+          <div className={styles.stepItem}>
+            <div className={`${styles.stepCircle} ${activeStep === 3 ? styles.stepCircleActive : ''}`}>3</div>
+            <span className={`${styles.stepLabel} ${activeStep === 3 ? styles.stepLabelActive : ''}`}>Start Session</span>
+          </div>
+        </nav>
+
+        {/* Top row: S1 + S2 */}
+        <div className={styles.topRow}>
+
+          {/* S1 — Audio Input */}
+          <div className={styles.card} ref={cardRefs[0]} onMouseEnter={() => setActiveStep(1)}>
+            <div className={styles.cardHead}>
+              <div className={styles.cardIconWrap}>
+                <MicIcon size={20} />
+              </div>
+              <div>
+                <h2 className={styles.cardTitle}>Choose your microphone</h2>
+                <p className={styles.cardSub}>Select the input source for Jam Pal</p>
+              </div>
             </div>
-          </li>
-        ))}
-      </ol>
 
-      <div className={styles.note}>
-        <span className={styles.noteAccent}>Best results:</span> play full chords rather than single
-        notes — chords give the key detector enough pitch information to be confident.
-        Key detection scores are logged to the console (F12) if you want to see the confidence.
-      </div>
+            <div className={styles.deviceList}>
+              {audioDevices.length > 0 ? audioDevices.map((d, i) => (
+                <button
+                  key={d.deviceId}
+                  type="button"
+                  className={`${styles.deviceRow} ${selectedDeviceId === d.deviceId ? styles.deviceRowActive : ''}`}
+                  onClick={() => setSelectedDeviceId?.(d.deviceId)}
+                >
+                  <MicIcon size={15} className={styles.deviceMicIcon} />
+                  <span className={styles.deviceName}>{d.label || `Microphone ${i + 1}`}</span>
+                  {selectedDeviceId === d.deviceId ? <CheckIcon /> : <LevelBars />}
+                </button>
+              )) : (
+                <p className={styles.emptyNote}>No devices detected yet — click below after granting access.</p>
+              )}
+            </div>
 
-      <div className={styles.configField}>
-        <label className={styles.configLabel}>Audio Input</label>
-        <select
-          value={selectedDeviceId}
-          onChange={(e) => setSelectedDeviceId?.(e.target.value)}
-          onMouseDown={() => onRefreshDevices?.(true)}
-          onFocus={() => onRefreshDevices?.(true)}
-          className={styles.selectDropdown}
-        >
-          {audioDevices.map((device, index) => (
-            <option key={device.deviceId} value={device.deviceId}>
-              {device.label || `Microphone ${index + 1}`}
-            </option>
-          ))}
-        </select>
-      </div>
+            <button type="button" className={styles.refreshBtn} onClick={() => onRefreshDevices?.(true)}>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" style={{ marginRight: 6 }}>
+                <path d="M17.65 6.35A7.958 7.958 0 0 0 12 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08A5.99 5.99 0 0 1 12 18c-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z" />
+              </svg>
+              Detect devices
+            </button>
+          </div>
 
-      <div className={styles.configField}>
-        <label className={styles.configLabel}>Genre</label>
-        <select
-          value={genre}
-          onChange={(e) => onGenreChange?.(e.target.value)}
-          className={styles.selectDropdown}
-        >
-          <option value="rock"> Rock</option>
-          <option value="pop"> Pop</option>
-          <option value="shoegaze"> Shoegaze</option>
-          <option value="blues"> Blues</option>
-        </select>
-      </div>
+          {/* S2 — Band Setup */}
+          <div className={styles.card} ref={cardRefs[1]} onMouseEnter={() => setActiveStep(2)}>
+            <div className={styles.cardHead}>
+              <div className={styles.cardIconWrap}>
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+                  <path d="M12 3c-4.97 0-9 4.03-9 9s4.03 9 9 9 9-4.03 9-9-4.03-9-9-9zm0 16c-3.86 0-7-3.14-7-7s3.14-7 7-7 7 3.14 7 7-3.14 7-7 7zm0-11a4 4 0 1 0 0 8 4 4 0 0 0 0-8zm0 6a2 2 0 1 1 0-4 2 2 0 0 1 0 4z" />
+                </svg>
+              </div>
+              <div>
+                <h2 className={styles.cardTitle}>Shape the band</h2>
+                <p className={styles.cardSub}>Customise how your virtual band responds</p>
+              </div>
+            </div>
 
-      <div className={styles.configField}>
-        <label className={styles.configLabel}>Style</label>
-        <select
-          value={style}
-          onChange={(e) => onStyleChange?.(e.target.value)}
-          className={styles.selectDropdown}
-        >
-          <option value="supportive">Supportive</option>
-          <option value="lead">Lead Band</option>
-          <option value="ambient">Ambient Space</option>
-        </select>
-      </div>
+            <div className={styles.s2Controls}>
+                <div className={styles.fieldGroup}>
+                  <span className={styles.fieldLabel}>Genre</span>
+                  <div className={styles.pillRow}>
+                    {GENRES.map(g => (
+                      <button key={g} type="button"
+                        className={`${styles.pill} ${genre === g.toLowerCase() ? styles.pillActive : ''}`}
+                        onClick={() => onGenreChange?.(g.toLowerCase())}
+                      >{g}</button>
+                    ))}
+                  </div>
+                </div>
+                <div className={styles.fieldGroup}>
+                  <span className={styles.fieldLabel}>Style</span>
+                  <div className={styles.pillRow}>
+                    {STYLES.map(s => (
+                      <button key={s.value} type="button"
+                        className={`${styles.pill} ${style === s.value ? styles.pillActive : ''}`}
+                        onClick={() => onStyleChange?.(s.value)}
+                      >{s.label}</button>
+                    ))}
+                  </div>
+                </div>
+                <div className={styles.fieldGroup}>
+                  <span className={styles.fieldLabel}>Time Signature</span>
+                  <div className={styles.pillRow}>
+                    {TIME_SIGS.map(t => (
+                      <button key={t} type="button"
+                        className={`${styles.pill} ${timeSig === t ? styles.pillActive : ''}`}
+                        onClick={() => onTimeSigChange?.(t)}
+                      >{t}</button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+          </div>
+        </div>
 
-      <div className={styles.configField}>
-        <label className={styles.configLabel}>Time Sig</label>
-        <select
-          value={timeSig}
-          onChange={(e) => onTimeSigChange?.(e.target.value)}
-          className={styles.selectDropdown}
-        >
-          <option value="4/4">4 / 4</option>
-          <option value="3/4">3 / 4</option>
-          <option value="2/4">2 / 4</option>
-          <option value="6/8">6 / 8</option>
-          <option value="12/8">12 / 8</option>
-        </select>
-      </div>
+        {/* S3 — Start (full width) */}
+        <div className={`${styles.card} ${styles.bottomCard}`} ref={cardRefs[2]} onMouseEnter={() => setActiveStep(3)}>
+          <div className={styles.s3Left}>
+            <div className={styles.cardHead}>
+              <div className={styles.cardIconWrap}>
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+                  <path d="M12 2.5C12 2.5 6 8 6 14a6 6 0 0 0 12 0c0-6-6-11.5-6-11.5zm0 15a4 4 0 0 1-4-4c0-3.5 2.67-7.27 4-9.18C13.33 6.23 16 9.5 16 13.5a4 4 0 0 1-4 4z" />
+                </svg>
+              </div>
+              <div>
+                <h2 className={styles.cardTitle}>Ready to play?</h2>
+                <p className={styles.cardSub}>Use headphones to prevent feedback. Strum a few chords and the band will lock onto your tempo and key within a couple of bars.</p>
+              </div>
+            </div>
+            <div className={styles.tipBox}>
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M12 3v10.55A4 4 0 1 0 14 17V3h-2zm-2 14a2 2 0 1 1 4 0 2 2 0 0 1-4 0z" />
+              </svg>
+              <span>Tip: The visualizer will react in real-time to your playing.</span>
+            </div>
+          </div>
 
-      <div className={styles.cta}>
-        <button className={styles.startBtn} onClick={onStart}>
-          Start session
-        </button>
-        <span className={styles.hint}>You can press Space to start / stop once inside</span>
+          <div className={styles.s3Right}>
+            <button className={styles.startBtn} type="button" onClick={onStart}>
+              Start Session →
+            </button>
+            <p className={styles.hint}>
+              Press <kbd className={styles.kbd}>Space</kbd> bar to toggle the band
+            </p>
+          </div>
+        </div>
       </div>
     </div>
   );
