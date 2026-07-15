@@ -1087,6 +1087,10 @@
     flex-wrap: wrap;
   }
 
+  .shortcut {
+    display: none;
+  }
+
   /* Three-column grid keeps the play button dead-centre even when the
      side control groups wrap onto multiple lines */
   .transport {

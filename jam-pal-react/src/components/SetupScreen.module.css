@@ -189,6 +189,7 @@
   gap: 24px;
   box-shadow: 0 4px 28px rgba(0, 0, 0, 0.35), inset 0 0 0 1px var(--line);
   min-height: 0;
+  min-width: 0;
 }
 
 .bottomCard {
@@ -242,6 +243,8 @@
   flex-direction: column;
   gap: 10px;
   flex: 1;
+  min-height: 0;
+  overflow-y: auto;
 }
 
 .deviceRow {
@@ -356,6 +359,7 @@
 
 .s2Controls {
   flex: 1;
+  min-width: 0;
   display: flex;
   flex-direction: column;
   gap: 22px;
@@ -497,8 +501,8 @@
   color: var(--text);
 }
 
-/* ── Mobile ──────────────────────────────── */
-@media (max-width: 700px) {
+/* ── Mobile + tablets (≤900px stacks cards) ─ */
+@media (max-width: 900px) {
   .page {
     height: auto;
     min-height: 100vh;
@@ -592,6 +596,33 @@
   .rocketLaunch {
     width: 52px !important;
     height: 52px !important;
+  }
+}
+
+/* ── Medium screens: shrink pills so they always fit the half-width card ── */
+@media (max-width: 1280px) and (min-width: 901px) {
+  .wrapper {
+    padding: 0 28px 28px;
+  }
+
+  .pill {
+    padding: 8px 14px;
+    font-size: 13px;
+  }
+
+  .pillRow {
+    gap: 7px;
+  }
+
+  .deviceRow {
+    padding: 12px 14px;
+    font-size: 13px;
+    gap: 10px;
+  }
+
+  .refreshBtn {
+    font-size: 13px;
+    padding: 10px 16px;
   }
 }
 
