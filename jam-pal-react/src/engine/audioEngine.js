@@ -292,8 +292,10 @@ export function createAudioEngine(callbacks = {}) {
 
     nudgeBpm(bpm) {
       if (bpmLocked || bpm == null) return;
+      // guard: a zero/negative/NaN estimate can never be folded into range
+      if (!Number.isFinite(bpm) || bpm <= 0) return;
       let b = bpm;
-      while (b < 55 || b > 160) { if (b > 160) b/= 2; else b *- 2; }
+      while (b < 55 || b > 160) { if (b > 160) b /= 2; else b *= 2; }
       smoothedBPM += 0.05 * (b - smoothedBPM);
     },
     toggleMetronome() {

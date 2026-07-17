@@ -417,9 +417,8 @@ function SessionView({
             </div>
           </div>
         </div>
-      </div>
 
-      <div className={`${styles.mixer} ${styles.mixerPanel}`}>
+        <div className={`${styles.mixer} ${styles.mixerPanel}`}>
         <div className={styles.mixerHeader}>
           <h2>MIXER</h2>
         </div>
@@ -497,6 +496,7 @@ function SessionView({
             style={{ '--fill': `${Math.min(100, (masterVolume / 1.5) * 100)}%` }}
           />
           <span className={styles.masterValue}>{Math.round(masterVolume * 100)}</span>
+        </div>
         </div>
       </div>
 

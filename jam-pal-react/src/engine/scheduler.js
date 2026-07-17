@@ -433,7 +433,8 @@ export function createScheduler(engine, brain, meter = METERS['4/4'], { instrume
 
   function stepAdvance(step) {
     const s16 = (60.0 / engine.getSmoothedBPM()) / 4;
-    return s16 * brain.stepAdvance(step);
+    const adv = s16 * brain.stepAdvance(step);
+    return Number.isFinite(adv) && adv > 0.0375 ? adv : 0.0375;
   }
 
   function schedulerLoop() {

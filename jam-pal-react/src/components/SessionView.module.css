@@ -69,6 +69,10 @@
   display: flex;
   align-items: center;
   justify-content: center;
+  flex-wrap: wrap;
+  gap: clamp(24px, 6vw, 110px);
+  padding: 8px 16px;
+  min-height: 0;
 }
 
 /*  Ring  */
@@ -76,8 +80,8 @@
 /* Wrapper — all layers sit inside here */
 .ringWrap {
   position: relative;
-  width: 460px;
-  height: 460px;
+  width: min(460px, 52vh);
+  height: min(460px, 52vh);
   flex-shrink: 0;
 }
 
@@ -182,7 +186,7 @@
 }
 
 .bpmNum {
-  font-size: 96px;
+  font-size: clamp(48px, 11vh, 96px);
   font-variant-numeric: tabular-nums;
   letter-spacing: -0.05em;
   line-height: 1;
@@ -487,19 +491,14 @@
   overflow: hidden;
 }
 
-/* Main mixer panel */
+/* Main mixer panel — a flex sibling of the ring inside .main; sits beside it
+   when the window is wide enough, wraps below it when not */
 .mixerPanel {
-  position: absolute;
-  top: 50%;
-  /* keep the full 410px gap from the ring, but never clip the viewport edge */
-  left: min(calc(50% + 410px), calc(100% - 464px));
-  right: auto;
-  transform: translateY(-50%);
-  z-index: 2;
   box-sizing: border-box;
-  width: 500px;
+  width: min(500px, calc(100vw - 32px));
   height: auto;
   display: block;
+  flex-shrink: 0;
   padding: 22px 20px 20px;
   border: 1px solid rgba(37, 63, 105, 0.58);
   border-radius: 15px;
@@ -1315,7 +1314,7 @@
     width: min(620px, calc(100% - 32px));
     height: auto;
     min-height: 0;
-    margin: 20px auto 0;
+    margin: 0;
     padding: 28px 26px 26px;
   }
 
@@ -1387,7 +1386,7 @@
   .mixer.mixerPanel {
     position: static;
     width: min(320px, calc(100% - 24px));
-    margin: 8px auto 0;
+    margin: 0;
     padding: 14px 12px 12px;
     border-radius: 12px;
   }
