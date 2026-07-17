@@ -137,8 +137,13 @@ export function createTransformerBrain({
         }
       }
 
-      if (!curBar) return fallback.step(ctx);
-      return toEngineEvents(curBar[ctx.step] || [], ctx);
+      // The backend only generates drum/bass bars, so the local groove brain
+      // always runs too: it supplies the keys/guitar comping on top of the
+      // transformer's rhythm section, and everything when the network is down.
+      const fbEvents = fallback.step(ctx);
+      if (!curBar) return fbEvents;
+      const comping = fbEvents.filter(ev => ev.kind === 'keys' || ev.kind === 'guitar');
+      return [...toEngineEvents(curBar[ctx.step] || [], ctx), ...comping];
     },
   };
 }
