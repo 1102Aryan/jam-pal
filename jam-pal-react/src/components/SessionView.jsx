@@ -248,6 +248,8 @@ function SessionView({
   drumVolume = 0.85, bassVolume = 1.0, keysVolume = 1.0, guitarVolume = 1.0, masterVolume = 0.8,
   onDrumVolume, onBassVolume, onKeysVolume, onGuitarVolume, onMasterVolume,
   mutedChannels = new Set(), soloedChannels = new Set(), onToggleMute, onToggleSolo,
+  brainMix = 1, onBrainMix, brainSource = null,
+  anticipationOn = true, onToggleAnticipation,
 }) {
   const isActive = listening || bandPlaying;
   const ringRef = useRef(null);
@@ -497,6 +499,37 @@ function SessionView({
           />
           <span className={styles.masterValue}>{Math.round(masterVolume * 100)}</span>
         </div>
+
+        {onBrainMix && (
+          <div className={styles.brainRow}>
+            <span className={styles.brainEnd}>local</span>
+            <input
+              type="range"
+              min="0"
+              max="1"
+              step="0.05"
+              value={brainMix}
+              onChange={(e) => onBrainMix(Number(e.target.value))}
+              aria-label="Brain mix: local vs backend"
+              className={styles.horizontalSlider}
+              style={{ '--fill': `${brainMix * 100}%` }}
+            />
+            <span className={styles.brainEnd}>backend</span>
+            <span className={`${styles.brainSource} ${brainSource === 'backend' ? styles.brainSourceBackend : ''}`}>
+              {brainSource ?? '—'}
+            </span>
+            {onToggleAnticipation && (
+              <button
+                className={`${styles.anticipateBtn} ${anticipationOn ? styles.anticipateBtnOn : ''}`}
+                onClick={onToggleAnticipation}
+                aria-pressed={anticipationOn}
+                title="Anticipatory harmony: shift chords when the model predicts them, not after detection"
+              >
+                anticipate
+              </button>
+            )}
+          </div>
+        )}
         </div>
       </div>
 

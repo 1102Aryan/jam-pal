@@ -28,7 +28,7 @@ function toEngineEvents(rawEvents, ctx) {
 
 export function createTransformerBrain({
   genre = 'rock', timeSig = '4/4', endpoint = ENDPOINT, lookahead = 2, lowWater = 1,
-  onPrediction = null,
+  onPrediction = null, onChordPrediction = null,
 } = {}) {
   const fallback  = createBrain({ genre, timeSig });
   let buffer      = [];
@@ -94,6 +94,18 @@ export function createTransformerBrain({
         const data = await res.json();
         lastPrediction = data.predictions[0];
         onPrediction?.(lastPrediction)
+        // the full predicted bar as upcoming chord changes: pitch encodes
+        // chordRootPc + 48 (see addEvent); each step's time_offset_ms is
+        // relative to the previous note, so the cumulative sum gives each
+        // chord's arrival time from now
+        if (onChordPrediction && data.predictions?.length) {
+          let atMs = 0;
+          const chords = data.predictions.map((p) => {
+            atMs += Math.max(0, p.time_offset_ms ?? 0);
+            return { rootPc: ((p.pitch % 12) + 12) % 12, atMs };
+          });
+          onChordPrediction(chords);
+        }
         console.log('[transformer] anticipation →', lastPrediction);
       }
     } catch { /* offline */ }

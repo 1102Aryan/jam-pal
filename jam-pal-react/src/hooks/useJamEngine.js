@@ -3,6 +3,7 @@ import { createAudioEngine } from '../engine/audioEngine.js';
 import { createScheduler } from '../engine/scheduler.js';
 import { createBrain } from '../engine/bandBrain.js';
 import { createTransformerBrain } from '../engine/transformerBrain.js';
+import { createHybridBrain } from '../engine/hybridBrain.js';
 import { createJamDirector } from '../engine/jamDirector.js';
 import { createSessionStats } from '../engine/sessionStats.js';
 import { METERS } from '../engine/config.js';
@@ -44,6 +45,12 @@ export function useJamEngine({ style = 'supportive', genre = 'blues', timeSig = 
   const [isMetronomeOn, setIsMetronomeOn] = useState(false);
   // Lock
   const [isLockOn, setIsLockOn] = useState(false);
+  // Dev-only brain A/B: probability each bar comes from the backend brain
+  const [brainMix, setBrainMixState] = useState(1);
+  const [brainSource, setBrainSource] = useState(null);
+  // Anticipatory harmony: apply the transformer's predicted chord changes
+  // ahead of detection so the band shifts with the player, not after
+  const [anticipationOn, setAnticipationOn] = useState(true);
 
   const engineRef    = useRef(null);
   const schedulerRef = useRef(null);
@@ -70,6 +77,47 @@ export function useJamEngine({ style = 'supportive', genre = 'blues', timeSig = 
     masterVolRef.current = v;
     setMasterVolState(v);
     engineRef.current?.setMasterVolume(v);
+  }, []);
+
+  const brainMixRef = useRef(1);
+  const setBrainMix = useCallback((v) => {
+    brainMixRef.current = v;
+    setBrainMixState(v);
+    brainRef.current?.setMix?.(v);
+  }, []);
+
+  const anticipationRef  = useRef(true);
+  const loopModeRef      = useRef('off');
+  const chordTimeoutsRef = useRef([]);
+  const toggleAnticipation = useCallback(() => {
+    setAnticipationOn(prev => {
+      anticipationRef.current = !prev;
+      return !prev;
+    });
+  }, []);
+
+  const clearChordTimeouts = () => {
+    for (const id of chordTimeoutsRef.current) clearTimeout(id);
+    chordTimeoutsRef.current = [];
+  };
+
+  // Schedule the predicted bar of chord changes. Each entry lands via
+  // engine.setChord at its predicted arrival, so bass/keys/guitar voice the
+  // new chord as the player hits it instead of after detection confirms it.
+  // Detection keeps running and corrects any wrong guesses.
+  const onChordPrediction = useCallback((chords) => {
+    if (!anticipationRef.current) return;
+    if (loopModeRef.current === 'playing') return; // looper owns the chords
+    clearChordTimeouts();
+    for (const { rootPc, atMs } of chords) {
+      if (atMs > 4000) break; // don't act on predictions too far out
+      const id = setTimeout(() => {
+        const engine = engineRef.current;
+        if (!engine || !anticipationRef.current) return;
+        engine.setChord(rootPc, engine.getChordQuality?.() ?? 'maj');
+      }, atMs);
+      chordTimeoutsRef.current.push(id);
+    }
   }, []);
 
   const setSelectedOutputId = useCallback((id) => {
@@ -162,17 +210,23 @@ export function useJamEngine({ style = 'supportive', genre = 'blues', timeSig = 
     engine.setMasterVolume(masterVolRef.current);
     if (outputIdRef.current) engine.setOutputDevice(outputIdRef.current);
     if (!schedulerRef.current) {
-      const brain = import.meta.env.VITE_USE_TRANSFORMER === 'true'
-        ? createTransformerBrain({
-            genre,
-            timeSig: timeSigRef.current,
-            onPrediction: (pred) => {
-              if (pred?.estimated_bpm != null) {
-                engineRef.current?.nudgeBpm?.(pred.estimated_bpm);
-              }
-            },
+      const onPrediction = (pred) => {
+        if (pred?.estimated_bpm != null) {
+          engineRef.current?.nudgeBpm?.(pred.estimated_bpm);
+        }
+      };
+      const useTransformer = import.meta.env.VITE_USE_TRANSFORMER === 'true';
+      // dev builds get the A/B hybrid so the local and backend brains can be
+      // compared live with the brain-mix slider; prod picks one at build time
+      const brain = useTransformer && import.meta.env.DEV
+        ? createHybridBrain({
+            genre, timeSig: timeSigRef.current, onPrediction, onChordPrediction,
+            onBarSource: setBrainSource,
           })
-        : createBrain({ genre, timeSig: timeSigRef.current });
+        : useTransformer
+          ? createTransformerBrain({ genre, timeSig: timeSigRef.current, onPrediction, onChordPrediction })
+          : createBrain({ genre, timeSig: timeSigRef.current });
+      brain.setMix?.(brainMixRef.current);
       brainRef.current = brain;
       const sched = createScheduler(engine, brain, meter, { instrument: instrumentRef.current });
       schedulerRef.current = sched;
@@ -184,7 +238,10 @@ export function useJamEngine({ style = 'supportive', genre = 'blues', timeSig = 
       });
       directorRef.current = director;
       sched.setOnBar(director.onBar);
-      sched.setOnLoopStatus(setLoopStatus);
+      sched.setOnLoopStatus((s) => {
+        loopModeRef.current = s.mode;
+        setLoopStatus(s);
+      });
     }
     // count-in fires immediately so the user gets the pulse
     setCountIn(3);
@@ -192,6 +249,7 @@ export function useJamEngine({ style = 'supportive', genre = 'blues', timeSig = 
   }, [selectedDeviceId, genre]);
 
   const stopMic = useCallback(() => {
+    clearChordTimeouts();
     setIsCountingIn(false);
     setCountIn(null);
     setBandReady(false);
@@ -339,5 +397,7 @@ export function useJamEngine({ style = 'supportive', genre = 'blues', timeSig = 
     setDrumVolume, setBassVolume, setKeysVolume, setGuitarVolume, setMasterVolume,
     refreshDevices, getFrequencyData,
     toggleMic, toggleRecording, toggleLoop,
+    brainMix, setBrainMix, brainSource,
+    anticipationOn, toggleAnticipation,
   };
 }

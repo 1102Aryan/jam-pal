@@ -93,6 +93,11 @@ function App() {
       soloedChannels={engine.soloedChannels}
       onToggleMute={engine.toggleMute}
       onToggleSolo={engine.toggleSolo}
+      brainMix={engine.brainMix}
+      onBrainMix={import.meta.env.DEV ? engine.setBrainMix : undefined}
+      brainSource={engine.brainSource}
+      anticipationOn={engine.anticipationOn}
+      onToggleAnticipation={import.meta.env.DEV ? engine.toggleAnticipation : undefined}
     />
   );
 }
