@@ -1,5 +1,5 @@
 import {
-  GUITAR_LOW_HZ, GUITAR_HIGH_HZ,
+  GUITAR_LOW_HZ, GUITAR_HIGH_HZ, GUITAR_CHROMA_LOW_HZ, GUITAR_CHROMA_HIGH_HZ,
   CHROMA_DECAY, KS_MAJOR, KS_MINOR, NOTE_NAMES, KEY_CONFIDENCE,
   TEMPO_WINDOW, ENERGY_LOW, ENERGY_HIGH,
   CHORD_MIN_ENERGY, CHORD_CONFIDENCE, CHORD_THIRD_DEADZONE,
@@ -17,14 +17,15 @@ export function energyLevel(smoothedEnergy) {
   return Math.max(0, Math.min(1, (smoothedEnergy - ENERGY_LOW) / (ENERGY_HIGH - ENERGY_LOW)));
 }
 
-// Computes half-wave-rectified spectral flux in the guitar band.
+// Computes half-wave-rectified spectral flux in the played instrument's band
+// (lowHz/highHz — see INSTRUMENT_PROFILES in config.js; defaults to guitar).
 // state = { freqBuf: Float32Array, prevMag: Float32Array | null }
 // Mutates state.prevMag; freqBuf must already be allocated to analyser.frequencyBinCount.
-export function computeSpectralFlux(analyser, audioCtx, state) {
+export function computeSpectralFlux(analyser, audioCtx, state, lowHz = GUITAR_LOW_HZ, highHz = GUITAR_HIGH_HZ) {
   analyser.getFloatFrequencyData(state.freqBuf);
   const binWidth = audioCtx.sampleRate / analyser.fftSize;
-  const startBin = Math.round(GUITAR_LOW_HZ / binWidth);
-  const endBin   = Math.min(state.freqBuf.length, Math.round(GUITAR_HIGH_HZ / binWidth));
+  const startBin = Math.round(lowHz / binWidth);
+  const endBin   = Math.min(state.freqBuf.length, Math.round(highHz / binWidth));
 
   const mag = new Float32Array(endBin - startBin);
   for (let i = startBin; i < endBin; i++) {
@@ -45,16 +46,18 @@ export function computeSpectralFlux(analyser, audioCtx, state) {
   return flux;
 }
 
-// Bins freqBuf magnitudes into chromaProfile (12 pitch classes), gated by onset window.
-// Mutates chromaProfile in place.
-export function updateChroma(chromaProfile, freqBuf, analyser, audioCtx, now, onsetGateExpiry) {
+// Bins freqBuf magnitudes into chromaProfile (12 pitch classes), gated by onset
+// window. lowHz/highHz select the played instrument's range (see
+// INSTRUMENT_PROFILES in config.js; defaults to guitar). Mutates chromaProfile
+// in place.
+export function updateChroma(chromaProfile, freqBuf, analyser, audioCtx, now, onsetGateExpiry, lowHz = GUITAR_CHROMA_LOW_HZ, highHz = GUITAR_CHROMA_HIGH_HZ) {
   for (let i = 0; i < 12; i++) chromaProfile[i] *= CHROMA_DECAY;
   if (now > onsetGateExpiry) return;
 
   const binWidth = audioCtx.sampleRate / analyser.fftSize;
   for (let bin = 1; bin < freqBuf.length; bin++) {
     const freq = bin * binWidth;
-    if (freq < 80 || freq > 1200) continue;
+    if (freq < lowHz || freq > highHz) continue;
     if (freqBuf[bin] < -80) continue;
     const mag  = Math.pow(10, freqBuf[bin] / 20);
     // de-emphasise higher partials so the fundamentals (the real chord tones)

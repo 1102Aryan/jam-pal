@@ -170,10 +170,101 @@ function playBassSynth(audioCtx, dest, noiseBuffer, targetFreq, ev, time) {
   }
 }
 
-// scheduler factory 
+// keys (electric piano synth)
+// Single note: a sine fundamental (warmth) + a soft chorus layer (width) go
+// through a lowpass for body; a fast-decaying high partial gives the tine's
+// bell-like attack. No samples yet — this is the always-available voice
+// (see DRUM_KIT/BASS_NOTES in config.js for the sample-backed pattern this
+// could follow if recorded keys multisamples are added later).
+function playKeysNote(audioCtx, dest, freq, gain, sustain, time) {
+  const rel = Math.min(0.4, sustain * 0.5);
+  const env = audioCtx.createGain();
+  env.gain.setValueAtTime(0.0001, time);
+  env.gain.linearRampToValueAtTime(gain, time + 0.008);
+  env.gain.exponentialRampToValueAtTime(gain * 0.35, time + Math.max(0.05, sustain - rel));
+  env.gain.exponentialRampToValueAtTime(0.0006, time + sustain + rel);
+  env.connect(dest);
+
+  const lp = audioCtx.createBiquadFilter();
+  lp.type = 'lowpass'; lp.frequency.value = 3200;
+  lp.connect(env);
+
+  const o1 = audioCtx.createOscillator(); o1.type = 'sine'; o1.frequency.value = freq;
+  const g1 = audioCtx.createGain(); g1.gain.value = 0.75;
+  o1.connect(g1).connect(lp);
+
+  const o2 = audioCtx.createOscillator(); o2.type = 'triangle'; o2.frequency.value = freq * 1.003; // chorus width
+  const g2 = audioCtx.createGain(); g2.gain.value = 0.18;
+  o2.connect(g2).connect(lp);
+
+  // bright, fast-decaying "tine" transient
+  const bellEnv = audioCtx.createGain();
+  bellEnv.gain.setValueAtTime(gain * 0.35, time);
+  bellEnv.gain.exponentialRampToValueAtTime(0.0005, time + 0.12);
+  const o3 = audioCtx.createOscillator(); o3.type = 'sine'; o3.frequency.value = freq * 4.0;
+  o3.connect(bellEnv).connect(dest);
+
+  const stop = time + sustain + rel + 0.05;
+  o1.start(time); o1.stop(stop);
+  o2.start(time); o2.stop(stop);
+  o3.start(time); o3.stop(time + 0.15);
+}
+
+function playKeysSynth(audioCtx, dest, rootFreq, ev, time) {
+  for (const semi of ev.voicing) {
+    playKeysNote(audioCtx, dest, rootFreq * Math.pow(2, semi / 12), ev.gain, ev.sustain, time);
+  }
+}
+
+// guitar (rhythm guitar synth)
+// A sawtooth+triangle blend through a bandpass gives a brighter, twangier
+// body than the keys' sine-based tone; a quick pluck envelope (short attack,
+// fast initial decay) reads as strummed rather than sustained.
+function playGuitarNote(audioCtx, dest, freq, gain, sustain, time) {
+  const rel = Math.min(0.15, sustain * 0.4);
+  const env = audioCtx.createGain();
+  env.gain.setValueAtTime(0.0001, time);
+  env.gain.linearRampToValueAtTime(gain, time + 0.006);
+  env.gain.exponentialRampToValueAtTime(gain * 0.25, time + Math.max(0.04, sustain - rel));
+  env.gain.exponentialRampToValueAtTime(0.0006, time + sustain + rel);
+  env.connect(dest);
+
+  const bp = audioCtx.createBiquadFilter();
+  bp.type = 'bandpass'; bp.frequency.value = freq * 2.2; bp.Q.value = 0.7;
+  bp.connect(env);
+
+  const o1 = audioCtx.createOscillator(); o1.type = 'sawtooth'; o1.frequency.value = freq;
+  const g1 = audioCtx.createGain(); g1.gain.value = 0.5;
+  o1.connect(g1).connect(bp);
+
+  const o2 = audioCtx.createOscillator(); o2.type = 'triangle'; o2.frequency.value = freq;
+  const g2 = audioCtx.createGain(); g2.gain.value = 0.4;
+  o2.connect(g2).connect(env); // some direct body, not just the bandpassed edge
+
+  const stop = time + sustain + rel + 0.05;
+  o1.start(time); o1.stop(stop);
+  o2.start(time); o2.stop(stop);
+}
+
+function playGuitarSynth(audioCtx, dest, rootFreq, ev, time) {
+  // strum: stagger each chord tone slightly, low-to-high like a real downstrum
+  const STRUM_SEC = 0.012;
+  ev.voicing.forEach((semi, i) => {
+    const freq = rootFreq * Math.pow(2, semi / 12);
+    playGuitarNote(audioCtx, dest, freq, ev.gain, ev.sustain, time + i * STRUM_SEC);
+  });
+}
+
+// scheduler factory
 // engine = object returned by createAudioEngine
 // brain  = object implementing the bandBrain interface (see bandBrain.js)
-export function createScheduler(engine, brain, meter = METERS['4/4']) {
+// instrument = what the player is playing (see INSTRUMENT_PROFILES in
+//   config.js) — the band drops its own part for that instrument so it
+//   doesn't clash with what the player is actually doing
+const SUPPRESSED_KIND = { guitar: 'guitar', bass: 'bass', keys: 'keys' };
+
+export function createScheduler(engine, brain, meter = METERS['4/4'], { instrument = 'guitar' } = {}) {
+  const mutedKind    = SUPPRESSED_KIND[instrument] ?? null;
   let playing        = false;
   let current16th    = 0;
   let nextNoteTime   = 0;
@@ -184,7 +275,7 @@ export function createScheduler(engine, brain, meter = METERS['4/4']) {
   let beatChangeCb   = null;
   let barCount       = 0;
   let onBarCb        = null;
-  let muteMask       = { kick: false, snare: false, hat: false, bass: false };
+  let muteMask       = { kick: false, snare: false, hat: false, bass: false, keys: false, guitar: false };
 
   // looper: capture LOOP_BARS bars of the player's chords, then loop them
   const LOOP_BARS   = 4;
@@ -258,6 +349,7 @@ export function createScheduler(engine, brain, meter = METERS['4/4']) {
   }
 
   function renderEvent(ev, time) {
+    if (ev.kind === mutedKind) return;
     const audioCtx = engine.getAudioCtx();
     if (!audioCtx) return;
     const fallback = audioCtx.destination;
@@ -302,6 +394,16 @@ export function createScheduler(engine, brain, meter = METERS['4/4']) {
       } else {
         playBassSynth(audioCtx, dest, engine.getNoiseBuffer(), targetFreq, ev, t);
       }
+    } else if (ev.kind === 'keys') {
+      if (muteMask.keys) return;
+      const dest     = engine.getKeysBus() ?? engine.getBandBus() ?? fallback;
+      const rootFreq = engine.getBassRootFreq() * Math.pow(2, ev.octave / 12);
+      playKeysSynth(audioCtx, dest, rootFreq, ev, t);
+    } else if (ev.kind === 'guitar') {
+      if (muteMask.guitar) return;
+      const dest     = engine.getGuitarBus() ?? engine.getBandBus() ?? fallback;
+      const rootFreq = engine.getBassRootFreq() * Math.pow(2, ev.octave / 12);
+      playGuitarSynth(audioCtx, dest, rootFreq, ev, t);
     }
   }
 

@@ -7,6 +7,45 @@ export const GUITAR_LOW_HZ  = 150;
 export const GUITAR_HIGH_HZ = 6000;
 export const ONSET_GATE_DUR = 0.40;   // seconds to accumulate chroma after onset
 
+// Chroma binning range for chord/key detection (see updateChroma in analysis.js)
+export const GUITAR_CHROMA_LOW_HZ  = 80;
+export const GUITAR_CHROMA_HIGH_HZ = 1200;
+
+// Bass tuning: fundamentals sit roughly an octave-plus below guitar (a 5-string's
+// low B ≈ 31 Hz vs guitar's low E ≈ 82 Hz), so both onset and chroma detection
+// need a much lower floor or most of what's actually played goes undetected.
+export const BASS_LOW_HZ         = 28;
+export const BASS_HIGH_HZ        = 1200;
+export const BASS_CHROMA_LOW_HZ  = 28;
+export const BASS_CHROMA_HIGH_HZ = 800;
+
+// Keyboard tuning: chords span both lower (left-hand/bass notes, ~C2) and
+// wider (spread voicings) than a strummed guitar, and the hammer attack gives
+// a strong percussive transient across a broad band — useful for onsets, but
+// chroma stays narrower so distant overtones don't smear the chord read.
+export const KEYS_LOW_HZ         = 60;
+export const KEYS_HIGH_HZ        = 6000;
+export const KEYS_CHROMA_LOW_HZ  = 60;
+export const KEYS_CHROMA_HIGH_HZ = 1500;
+
+// Per-instrument detection profile, selected by what the player says they're
+// playing (see SetupScreen's instrument picker). Feeds computeSpectralFlux
+// (onset) and updateChroma (chord/key) in analysis.js.
+export const INSTRUMENT_PROFILES = {
+  guitar: {
+    onsetLowHz: GUITAR_LOW_HZ, onsetHighHz: GUITAR_HIGH_HZ,
+    chromaLowHz: GUITAR_CHROMA_LOW_HZ, chromaHighHz: GUITAR_CHROMA_HIGH_HZ,
+  },
+  bass: {
+    onsetLowHz: BASS_LOW_HZ, onsetHighHz: BASS_HIGH_HZ,
+    chromaLowHz: BASS_CHROMA_LOW_HZ, chromaHighHz: BASS_CHROMA_HIGH_HZ,
+  },
+  keys: {
+    onsetLowHz: KEYS_LOW_HZ, onsetHighHz: KEYS_HIGH_HZ,
+    chromaLowHz: KEYS_CHROMA_LOW_HZ, chromaHighHz: KEYS_CHROMA_HIGH_HZ,
+  },
+};
+
 // Tempo
 export const TEMPO_WINDOW = 5;        // gaps between last N onsets
 // How many beats ahead the band forecasts the player's tempo (anticipation).

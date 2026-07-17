@@ -2,6 +2,7 @@ import {
   BASELINE_RATE, ONSET_FACTOR, REFRACTORY, RMS_GATE, ONSET_GATE_DUR,
   ENERGY_ATTACK, ENERGY_RELEASE, LOCKED_FOLLOW_SCALE,
   BASS_NOTES, BASS_VELOCITY_LAYERS, BASS_ROUND_ROBINS, DRUM_KIT, GENRE_KITS, GENRE_FX,
+  INSTRUMENT_PROFILES,
   DEFAULT_OUTPUT_LATENCY, INPUT_LATENCY_EST, FEEDBACK_GUARD, BAND_HIT_TTL,
   CHORD_HOLD_SEC, CHORD_HOLD_MIN, NOTE_NAMES,
   TIMING_REFRACTORY, TIMING_WINDOW, TIMING_TIGHT_SEC, TIMING_ONBEAT_FRAC,
@@ -127,8 +128,15 @@ export function createAudioEngine(callbacks = {}) {
   let bandBus          = null;
   let drumBus          = null;
   let bassBus          = null;
+  let keysBus          = null;
+  let guitarBus        = null;
   let drumVolume       = 0.85;
   let bassVolume       = 1.0;
+  let keysVolume       = 1.0;
+  let guitarVolume     = 1.0;
+  let masterVolume     = 0.8;
+  let activeProfile    = INSTRUMENT_PROFILES.guitar;
+  let outputDeviceId   = '';   // '' = system default output
 
   // Metronome — runs on its own AudioContext + timer (separate from the main
   // audioCtx). Armed by the button; clicks only while the session is playing.
@@ -245,11 +253,38 @@ export function createAudioEngine(callbacks = {}) {
     getBandBus:      () => bandBus,
     getDrumBus:      () => drumBus,
     getBassBus:      () => bassBus,
+    getKeysBus:      () => keysBus,
+    getGuitarBus:    () => guitarBus,
+
+    // Route band audio to a specific output device (AudioContext.setSinkId,
+    // Chrome 110+). Applies immediately if a session is running, and is
+    // remembered for the next session either way. '' = system default.
+    async setOutputDevice(deviceId) {
+      outputDeviceId = deviceId ?? '';
+      if (audioCtx && typeof audioCtx.setSinkId === 'function') {
+        try {
+          await audioCtx.setSinkId(outputDeviceId);
+        } catch (e) {
+          console.warn('[JamPal] setSinkId failed:', e.message);
+          callbacks.onStatus?.('Could not switch audio output: ' + e.message);
+        }
+      }
+    },
+    getOutputDeviceId: () => outputDeviceId,
+    // whether this browser supports per-app output routing at all
+    canSetOutputDevice: () =>
+      typeof AudioContext !== 'undefined' && 'setSinkId' in AudioContext.prototype,
 
     setDrumVolume(v) { drumVolume = v; if (drumBus) drumBus.gain.value = v; },
     setBassVolume(v) { bassVolume = v; if (bassBus) bassBus.gain.value = v; },
+    setKeysVolume(v) { keysVolume = v; if (keysBus) keysBus.gain.value = v; },
+    setGuitarVolume(v) { guitarVolume = v; if (guitarBus) guitarBus.gain.value = v; },
+    setMasterVolume(v) { masterVolume = v; if (bandBus) bandBus.gain.value = v; },
     getDrumVolume:   () => drumVolume,
     getBassVolume:   () => bassVolume,
+    getKeysVolume:   () => keysVolume,
+    getGuitarVolume: () => guitarVolume,
+    getMasterVolume: () => masterVolume,
 
     // ---- metronome controls ----
     // The button *arms* the metronome (stays lit), but it only clicks while the
@@ -391,7 +426,8 @@ export function createAudioEngine(callbacks = {}) {
       }
     },
 
-    async start(deviceId = null, genre = 'rock') {
+    async start(deviceId = null, genre = 'rock', instrument = 'guitar') {
+      activeProfile = INSTRUMENT_PROFILES[instrument] ?? INSTRUMENT_PROFILES.guitar;
       try {
         const constraints = {
           audio: {
@@ -414,11 +450,28 @@ export function createAudioEngine(callbacks = {}) {
       const AudioCtx = window.AudioContext || /** @type {any} */ (window).webkitAudioContext;
       audioCtx = new AudioCtx();
       if (audioCtx.state === 'suspended') await audioCtx.resume();
+
+      // route to the chosen output device (Chrome 110+); '' = system default
+      if (outputDeviceId && typeof audioCtx.setSinkId === 'function') {
+        audioCtx.setSinkId(outputDeviceId).catch((e) =>
+          console.warn('[JamPal] setSinkId failed, using default output:', e.message));
+      }
+
+      // if the output device disappears (USB unplugged) the context can end up
+      // suspended — resume so audio fails over to the new default instead of
+      // dying silently
+      audioCtx.onstatechange = () => {
+        if (listening && audioCtx?.state === 'suspended') {
+          audioCtx.resume().catch(() => {});
+        }
+      };
+
       loadKit(genre);
 
       const fx = GENRE_FX[genre] ?? GENRE_FX.rock;
 
       bandBus = audioCtx.createGain();
+      bandBus.gain.value = masterVolume;
 
       drumBus = audioCtx.createGain();
       drumBus.gain.value = drumVolume;
@@ -441,6 +494,26 @@ export function createAudioEngine(callbacks = {}) {
       bassBus.connect(bassShelf);
       bassShelf.connect(bassComp);
       bassComp.connect(bandBus);
+
+      // keys chain: volume → gentle lowpass (keeps the comp warm, out of the
+      // bass/drum way) → band bus
+      keysBus = audioCtx.createGain();
+      keysBus.gain.value = keysVolume;
+      const keysLP = audioCtx.createBiquadFilter();
+      keysLP.type = 'lowpass';
+      keysLP.frequency.value = 5000;
+      keysBus.connect(keysLP);
+      keysLP.connect(bandBus);
+
+      // guitar chain: volume → gentle highpass (keeps it out of the bass's
+      // way, since guitar's register sits lower than the keys) → band bus
+      guitarBus = audioCtx.createGain();
+      guitarBus.gain.value = guitarVolume;
+      const guitarHP = audioCtx.createBiquadFilter();
+      guitarHP.type = 'highpass';
+      guitarHP.frequency.value = 90;
+      guitarBus.connect(guitarHP);
+      guitarHP.connect(bandBus);
 
       const comp = audioCtx.createDynamicsCompressor();
       comp.threshold.value = -18;
@@ -566,7 +639,7 @@ export function createAudioEngine(callbacks = {}) {
       if (micStream) micStream.getTracks().forEach(t => t.stop());
       if (audioCtx)  audioCtx.close();
       Object.keys(samples).forEach(k => delete samples[k]);
-      audioCtx = analyser = keyAnalyser = keyFreqBuf = micStream = noiseBuffer = bandBus = drumBus = bassBus = recorderNode = null;
+      audioCtx = analyser = keyAnalyser = keyFreqBuf = micStream = noiseBuffer = bandBus = drumBus = bassBus = keysBus = guitarBus = recorderNode = null;
       callbacks.onListeningChange?.(false);
       callbacks.onStatus?.('Stopped.');
       callbacks.onRms?.(0);
@@ -591,14 +664,14 @@ export function createAudioEngine(callbacks = {}) {
     callbacks.onEnergy?.(energyLevel(smoothedEnergy));
 
     const now  = audioCtx.currentTime;
-    const flux = computeSpectralFlux(analyser, audioCtx, fluxState);
+    const flux = computeSpectralFlux(analyser, audioCtx, fluxState, activeProfile.onsetLowHz, activeProfile.onsetHighHz);
 
     // when the band's own hit is bleeding into the mic, skip detection so we
     // track the player and not our own drums
     const bandBleed = bandPlaying && bandHitNear(now);
     if (!bandBleed) {
       keyAnalyser.getFloatFrequencyData(keyFreqBuf);
-      updateChroma(chromaProfile, keyFreqBuf, keyAnalyser, audioCtx, now, onsetGateExpiry);
+      updateChroma(chromaProfile, keyFreqBuf, keyAnalyser, audioCtx, now, onsetGateExpiry, activeProfile.chromaLowHz, activeProfile.chromaHighHz);
     }
 
     if (++keyFrameCount % 30 === 0) {

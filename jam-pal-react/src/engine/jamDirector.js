@@ -40,11 +40,11 @@ const STYLE_CONFIG = {
 
 // Mute mask per state — false = play, true = muted
 const MASKS = {
-  normal:    { kick: false, snare: false, hat: false, bass: false },
-  breakdown: { kick: false, snare: true,  hat: true,  bass: true  }, // kick only: re-entry practice
-  solo:      { kick: false, snare: false, hat: true,  bass: false }, // kick+bass: minimal backing
-  call:      { kick: false, snare: true,  hat: true,  bass: false }, // bass+kick: melodic call phrase
-  response:  { kick: true,  snare: true,  hat: true,  bass: true  }, // full silence: player answers
+  normal:    { kick: false, snare: false, hat: false, bass: false, keys: false, guitar: false },
+  breakdown: { kick: false, snare: true,  hat: true,  bass: true,  keys: true,  guitar: true  }, // kick only: re-entry practice
+  solo:      { kick: false, snare: false, hat: true,  bass: false, keys: false, guitar: false }, // kick+bass: minimal backing
+  call:      { kick: false, snare: true,  hat: true,  bass: false, keys: false, guitar: false }, // bass+kick: melodic call phrase
+  response:  { kick: true,  snare: true,  hat: true,  bass: true,  keys: true,  guitar: true  }, // full silence: player answers
 };
 
 // { getStyle: () => string, onModeChange: (mode | null) => void, setMuteMask: (mask) => void }

@@ -10,8 +10,9 @@ function App() {
   const [genre, setGenre] = useState('blues');
   const [style, setStyle] = useState('supportive');
   const [timeSig, setTimeSig] = useState('4/4');
+  const [instrument, setInstrument] = useState('guitar');
 
-  const engine = useJamEngine({ style, genre, timeSig });
+  const engine = useJamEngine({ style, genre, timeSig, instrument });
 
   // end the jam (stopping the band if it's running) and show the report
   const endSession = () => {
@@ -26,12 +27,17 @@ function App() {
         genre={genre}
         style={style}
         timeSig={timeSig}
+        instrument={instrument}
         onGenreChange={setGenre}
         onStyleChange={setStyle}
         onTimeSigChange={setTimeSig}
+        onInstrumentChange={setInstrument}
         audioDevices={engine.audioDevices}
         selectedDeviceId={engine.selectedDeviceId}
         setSelectedDeviceId={engine.setSelectedDeviceId}
+        outputDevices={engine.outputDevices}
+        selectedOutputId={engine.selectedOutputId}
+        setSelectedOutputId={engine.setSelectedOutputId}
         onRefreshDevices={engine.refreshDevices}
       />
     );
@@ -70,12 +76,23 @@ function App() {
       genre={genre}
       style={style}
       timeSig={timeSig}
+      instrument={instrument}
       jamMode={engine.jamMode}
       timing={engine.timing}
       drumVolume={engine.drumVolume}
       bassVolume={engine.bassVolume}
+      keysVolume={engine.keysVolume}
+      guitarVolume={engine.guitarVolume}
+      masterVolume={engine.masterVolume}
       onDrumVolume={engine.setDrumVolume}
       onBassVolume={engine.setBassVolume}
+      onKeysVolume={engine.setKeysVolume}
+      onGuitarVolume={engine.setGuitarVolume}
+      onMasterVolume={engine.setMasterVolume}
+      mutedChannels={engine.mutedChannels}
+      soloedChannels={engine.soloedChannels}
+      onToggleMute={engine.toggleMute}
+      onToggleSolo={engine.toggleSolo}
     />
   );
 }

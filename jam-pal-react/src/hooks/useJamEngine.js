@@ -7,7 +7,7 @@ import { createJamDirector } from '../engine/jamDirector.js';
 import { createSessionStats } from '../engine/sessionStats.js';
 import { METERS } from '../engine/config.js';
 
-export function useJamEngine({ style = 'supportive', genre = 'blues', timeSig = '4/4' } = {}) {
+export function useJamEngine({ style = 'supportive', genre = 'blues', timeSig = '4/4', instrument = 'guitar' } = {}) {
   const [listening,    setListening]    = useState(false);
   const [bandPlaying,  setBandPlaying]  = useState(false);
   const [bandReady,    setBandReady]    = useState(false); 
@@ -26,12 +26,20 @@ export function useJamEngine({ style = 'supportive', genre = 'blues', timeSig = 
   const [timing,       setTiming]       = useState(null);
   const [drumVolume,   setDrumVolState] = useState(0.85);
   const [bassVolume,   setBassVolState] = useState(1.0);
+  const [keysVolume,   setKeysVolState] = useState(1.0);
+  const [guitarVolume, setGuitarVolState] = useState(1.0);
+  const [masterVolume, setMasterVolState] = useState(0.8);
+  const [mutedChannels,  setMutedChannels]  = useState(() => new Set());
+  const [soloedChannels, setSoloedChannels] = useState(() => new Set());
   const [isRecording,  setRecording]    = useState(false);
   const [loopStatus,   setLoopStatus]   = useState({ mode: 'off', bar: 0, bars: 4 });
   const [sessionReport, setSessionReport] = useState(null);
   // Audio Input
   const [audioDevices, setAudioDevices] = useState([]);
   const [selectedDeviceId, setSelectedDeviceId] = useState('');
+  // Audio Output (where the band's sound goes; '' = system default)
+  const [outputDevices, setOutputDevices] = useState([]);
+  const [selectedOutputId, setSelectedOutputIdState] = useState('');
   // Metronome
   const [isMetronomeOn, setIsMetronomeOn] = useState(false);
   // Lock
@@ -44,21 +52,67 @@ export function useJamEngine({ style = 'supportive', genre = 'blues', timeSig = 
   const brainRef     = useRef(null);
   const styleRef     = useRef(style);
   const timeSigRef   = useRef(timeSig);
-  const drumVolRef   = useRef(0.85);
-  const bassVolRef   = useRef(1.0);
+  const instrumentRef = useRef(instrument);
+  const masterVolRef = useRef(0.8);
+  const outputIdRef  = useRef('');
   useEffect(() => { styleRef.current = style; }, [style]);
   useEffect(() => { timeSigRef.current = timeSig; }, [timeSig]);
+  useEffect(() => { instrumentRef.current = instrument; }, [instrument]);
 
-  const setDrumVolume = useCallback((v) => {
-    drumVolRef.current = v;
-    setDrumVolState(v);
-    engineRef.current?.setDrumVolume(v);
+  // Channel faders (drums/bass/keys/guitar) only set the *desired* level here;
+  // the effect below is the single place that pushes to the engine, so it can
+  // account for mute/solo without the two racing.
+  const setDrumVolume   = useCallback((v) => setDrumVolState(v), []);
+  const setBassVolume   = useCallback((v) => setBassVolState(v), []);
+  const setKeysVolume   = useCallback((v) => setKeysVolState(v), []);
+  const setGuitarVolume = useCallback((v) => setGuitarVolState(v), []);
+  const setMasterVolume = useCallback((v) => {
+    masterVolRef.current = v;
+    setMasterVolState(v);
+    engineRef.current?.setMasterVolume(v);
   }, []);
-  const setBassVolume = useCallback((v) => {
-    bassVolRef.current = v;
-    setBassVolState(v);
-    engineRef.current?.setBassVolume(v);
+
+  const setSelectedOutputId = useCallback((id) => {
+    outputIdRef.current = id ?? '';
+    setSelectedOutputIdState(id ?? '');
+    engineRef.current?.setOutputDevice(id ?? '');
   }, []);
+
+  const toggleMute = useCallback((channel) => {
+    setMutedChannels(prev => {
+      const next = new Set(prev);
+      next.has(channel) ? next.delete(channel) : next.add(channel);
+      return next;
+    });
+  }, []);
+  const toggleSolo = useCallback((channel) => {
+    setSoloedChannels(prev => {
+      const next = new Set(prev);
+      next.has(channel) ? next.delete(channel) : next.add(channel);
+      return next;
+    });
+  }, []);
+
+  // Effective level per channel: soloing any channel silences every other
+  // one; an explicit mute always silences regardless of solo state.
+  const effectiveVolume = (channel, raw) => {
+    if (soloedChannels.size > 0 && !soloedChannels.has(channel)) return 0;
+    if (mutedChannels.has(channel)) return 0;
+    return raw;
+  };
+
+  // Single source of truth for what actually reaches the engine — re-runs on
+  // every fader move, mute/solo toggle, and once more when the engine becomes
+  // ready (`listening` flips true after the buses exist, see start()).
+  useEffect(() => {
+    const engine = engineRef.current;
+    if (!engine) return;
+    engine.setDrumVolume(effectiveVolume('drums', drumVolume));
+    engine.setBassVolume(effectiveVolume('bass', bassVolume));
+    engine.setKeysVolume(effectiveVolume('keys', keysVolume));
+    engine.setGuitarVolume(effectiveVolume('guitar', guitarVolume));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [drumVolume, bassVolume, keysVolume, guitarVolume, mutedChannels, soloedChannels, listening]);
 
   function ensureEngine() {
     if (!engineRef.current) {
@@ -97,15 +151,16 @@ export function useJamEngine({ style = 'supportive', genre = 'blues', timeSig = 
     const meter = METERS[timeSigRef.current] ?? METERS['4/4'];
     engine.setMeter(meter);
 
-    const ok = await engine.start(selectedDeviceId, genre);
+    const ok = await engine.start(selectedDeviceId, genre, instrumentRef.current);
     if (!ok) {
       engineRef.current = null;
       setMicBlocked(true);
       return;
     }
-    // apply any volume the user set before this session started
-    engine.setDrumVolume(drumVolRef.current);
-    engine.setBassVolume(bassVolRef.current);
+    // channel faders (drums/bass/keys/guitar) are applied by the volume effect
+    // once `listening` flips true below; master is independent of mute/solo
+    engine.setMasterVolume(masterVolRef.current);
+    if (outputIdRef.current) engine.setOutputDevice(outputIdRef.current);
     if (!schedulerRef.current) {
       const brain = import.meta.env.VITE_USE_TRANSFORMER === 'true'
         ? createTransformerBrain({
@@ -119,7 +174,7 @@ export function useJamEngine({ style = 'supportive', genre = 'blues', timeSig = 
           })
         : createBrain({ genre, timeSig: timeSigRef.current });
       brainRef.current = brain;
-      const sched = createScheduler(engine, brain, meter);
+      const sched = createScheduler(engine, brain, meter, { instrument: instrumentRef.current });
       schedulerRef.current = sched;
 
       const director = createJamDirector({
@@ -148,6 +203,8 @@ export function useJamEngine({ style = 'supportive', genre = 'blues', timeSig = 
     engineRef.current = null;
     setListening(false);
     setIsLockOn(false);   // a fresh session starts unlocked (engine is recreated)
+    setMutedChannels(new Set());
+    setSoloedChannels(new Set());
 
     // produce the session report from everything collected this jam
     const report = statsRef.current?.summarize() ?? null;
@@ -170,18 +227,31 @@ export function useJamEngine({ style = 'supportive', genre = 'blues', timeSig = 
   // the picker we request permission once and re-enumerate to get real names.
   const refreshDevices = useCallback(async (allowPrompt = false) => {
     try {
-      const list = async () =>
-        (await navigator.mediaDevices.enumerateDevices()).filter(d => d.kind === 'audioinput');
-      let inputs = await list();
+      const list = async () => {
+        const all = await navigator.mediaDevices.enumerateDevices();
+        return {
+          inputs: all.filter(d => d.kind === 'audioinput'),
+          outputs: all.filter(d => d.kind === 'audiooutput'),
+        };
+      };
+      let { inputs, outputs } = await list();
       if (allowPrompt && (inputs.length === 0 || inputs.every(d => !d.label))) {
         const tmp = await navigator.mediaDevices.getUserMedia({ audio: true });
         tmp.getTracks().forEach(t => t.stop());
-        inputs = await list();
+        ({ inputs, outputs } = await list());
       }
       setAudioDevices(inputs);
       setSelectedDeviceId(prev =>
         prev && inputs.some(d => d.deviceId === prev) ? prev : (inputs[0]?.deviceId ?? '')
       );
+      setOutputDevices(outputs);
+      // if the chosen output was unplugged, fall back to the system default so
+      // the band keeps sounding instead of pointing at a dead device
+      if (outputIdRef.current && !outputs.some(d => d.deviceId === outputIdRef.current)) {
+        outputIdRef.current = '';
+        setSelectedOutputIdState('');
+        engineRef.current?.setOutputDevice('');
+      }
     } catch (e) {
       console.error('Error fetching devices:', e);
     }
@@ -262,7 +332,11 @@ export function useJamEngine({ style = 'supportive', genre = 'blues', timeSig = 
     bpm, musicKey, chordHistory, rms, energy, activeBeat, status, onsetFlash, micBlocked, countIn,
     jamMode, timing, isRecording, loopStatus, sessionReport, isMetronomeOn, toggleMetronome,
     isLockOn, toggleLock,
-    drumVolume, bassVolume, audioDevices, selectedDeviceId, setSelectedDeviceId, setDrumVolume, setBassVolume,
+    drumVolume, bassVolume, keysVolume, guitarVolume, masterVolume,
+    mutedChannels, soloedChannels, toggleMute, toggleSolo,
+    audioDevices, selectedDeviceId, setSelectedDeviceId,
+    outputDevices, selectedOutputId, setSelectedOutputId,
+    setDrumVolume, setBassVolume, setKeysVolume, setGuitarVolume, setMasterVolume,
     refreshDevices, getFrequencyData,
     toggleMic, toggleRecording, toggleLoop,
   };

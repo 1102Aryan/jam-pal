@@ -17,6 +17,7 @@ const N      = 180;   // samples around the circle
 const BANDS  = 64;    // FFT bands mapped onto the ring
 const WAVES  = 8;     // max Fourier waves (adaptive complexity scales this down)
 const LAYERS = 4;     // offset copies for depth / light-trail look
+const IDLE_SPEED = 0.1; // slow background drift while the session is stopped
 
 // gradient — cyan → blue → purple → pink → cyan (matches --ring-b/--ring-a/pink)
 const GRADIENT = ['#00d4ff', '#6ea8ff', '#9b6fff', '#c084fc', '#00d4ff'];
@@ -136,8 +137,8 @@ function RingVisualizer({ getFrequencyData, rms = 0, energy = 0, activeBeat = -1
       // ---- advance the clocks ----
       // drift very slowly when idle so the ring still has a little life, and run
       // at full speed only when there's audio
-      const sp = moving ? 1 : 0.2;
-      morphT += (dt / 4) * sp;          // a new shape every ~4s playing, ~20s idle
+      const sp = moving ? 1 : IDLE_SPEED;
+      morphT += (dt / 4) * sp;          // a new shape every ~4s playing, ~40s idle
       if (morphT >= 1) { morphT = 0; shapeA = shapeB; shapeB = makeShape(); }
       globalRot += dt * (TAU / 90) * sp;
       gradRot   += dt * (TAU / 40) * (1 + eng) * sp;

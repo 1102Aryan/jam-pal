@@ -22,7 +22,28 @@ import { GENRE_SPECS, METER_GROOVES } from './genres.js';
 //             gain: 0-1, dt: seconds }
 //         | { kind: 'bass', semi: int, gain: 0-1, sustain: seconds,
 //             dt: seconds, slide: bool }
+//         | { kind: 'keys' | 'guitar', voicing: int[], octave: semitones,
+//             gain: 0-1, sustain: seconds, dt: seconds }
 // ============================================================================
+
+// chord-tone offset (semitones from the root) for a comping voicing role,
+// aware of the detected chord quality the same way bass's 'third' is
+const CHORD_TONE_SEMI = {
+  root: 0, fifth: 7, sixth: 9,
+  third:   (q) => q === 'min' ? 3  : 4,
+  seventh: (q) => q === 'min' ? 10 : 10, // dominant/minor 7th — a bluesy colour either way
+};
+function chordVoicing(roles, quality) {
+  return roles.map(r => {
+    const v = CHORD_TONE_SEMI[r];
+    return typeof v === 'function' ? v(quality) : v;
+  });
+}
+
+// comping instruments (keys, guitar): both are optional per-genre chord parts
+// with identical pool/voicing/emission logic — only the event `kind` and the
+// spec they read from (spec.keys / spec.guitar) differ.
+const COMPING_KINDS = ['keys', 'guitar'];
 
 export function createBrain({ genre = 'rock', timeSig = '4/4' } = {}) {
   const meter = METERS[timeSig] ?? METERS['4/4'];
@@ -60,6 +81,11 @@ function createGrooveBrain(spec, meter) {
 
   // bass: a pool of per-bar variations (falls back to a single pattern)
   const bassPool = spec.bass.pool ?? [spec.bass.pattern];
+  // comping (keys/guitar): optional chord-comping pools — genres without a
+  // spec for a given kind simply don't get that part
+  const comping = COMPING_KINDS
+    .filter(kind => spec[kind]?.pool)
+    .map(kind => ({ kind, spec: spec[kind], pool: spec[kind].pool, idx: 0, pat: spec[kind].pool[0] }));
 
   let tier       = 0;   // start sparse and build in, rather than slamming in
   let kickIdx    = 0;
@@ -90,6 +116,10 @@ function createGrooveBrain(spec, meter) {
     kickPat = spec.kickPool[t][kickIdx];
     hatPat  = spec.hatPool[t][hatIdx];
     bassPat = bassPool[bassIdx];
+    for (const c of comping) {
+      c.idx = pickPattern(c.pool, c.idx);
+      c.pat = c.pool[c.idx];
+    }
 
     // phrase shape: a gentle crescendo toward the phrase end, where a fill lands
     // (and the occasional surprise fill mid-phrase) so the groove develops
@@ -115,6 +145,7 @@ function createGrooveBrain(spec, meter) {
       tier = 0; fill = null; justFilled = false; phraseGain = 1;
       kickIdx = 0; hatIdx = 0; bassIdx = 0;
       kickPat = spec.kickPool[0][0]; hatPat = spec.hatPool[0][0]; bassPat = bassPool[0];
+      for (const c of comping) { c.idx = 0; c.pat = c.pool[0]; }
     },
 
     step(ctx) {
@@ -181,6 +212,22 @@ function createGrooveBrain(spec, meter) {
           const sustain = (isBeat ? bp.beatSustain : bp.offSustain) * beatSec;
           const g = (0.28 + 0.27 * e) * (isBeat ? 1 : 0.8) * arc;
           events.push({ kind: 'bass', semi, gain: jitter(g), sustain, dt: loose(step), slide });
+        }
+      }
+
+      // ---- comping (keys/guitar): chord parts, follow the same root/quality
+      // as the bass. Both play simultaneously when neither is the player's own
+      // instrument (see scheduler.js's per-instrument suppression).
+      if (!inFill) {
+        for (const c of comping) {
+          if (!(step in c.pat)) continue;
+          const hit = c.pat[step];
+          const voicing = chordVoicing(c.spec.voicing, ctx.chordQuality);
+          const g = hit.gain * (0.6 + 0.4 * e) * arc;
+          events.push({
+            kind: c.kind, voicing, octave: c.spec.octaveShift,
+            gain: jitter(g), sustain: hit.sustainBeats * beatSec, dt: loose(step),
+          });
         }
       }
 
